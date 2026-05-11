@@ -1,0 +1,8 @@
+{
+  "editor.snippetSuggestions": "top",
+  "clangd.path": "/Users/guojin/robostack/ros2/.pixi/envs/default/bin/clangd",
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/build"
+  ],
+  "python.defaultInterpreterPath": "/Users/guojin/robostack/ros2/.pixi/envs/default/bin/python"
+}
