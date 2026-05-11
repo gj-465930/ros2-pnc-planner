@@ -1,10 +1,24 @@
 #pragma once
+
+#include <chrono>
+#include <vector>
+
+#include "geometry_msgs/msg/point.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "visualization_msgs/msg/marker.hpp"
 
-class MyNode : public rclcpp::Node {
+namespace pnc_planner {
+
+class Visualizer {
 public:
-  MyNode() : Node("node_name") {
-    RCLCPP_INFO(this->get_logger(), "节点 %s 已启动！", "node_name");
-  }
+  explicit Visualizer(rclcpp::Node::SharedPtr node);
+
+  void
+  publishReferenceLine(const std::vector<geometry_msgs::msg::Point> &points);
+
+private:
+  rclcpp::Node::SharedPtr node_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pub_;
 };
+
+} // namespace pnc_planner
