@@ -10,10 +10,14 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(nav_msgs REQUIRED)
 
 add_executable(pnc_planner 
   src/main.cpp 
   src/visualizer.cpp
+  src/ego_vehicle.cpp
 )
 target_include_directories(pnc_planner PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -24,6 +28,9 @@ ament_target_dependencies(
   "rclcpp"
   "visualization_msgs"
   "geometry_msgs"
+  "tf2"
+  "tf2_ros"
+  "nav_msgs"
 )
 
 install(TARGETS pnc_planner

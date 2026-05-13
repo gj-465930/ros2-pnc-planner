@@ -1,3 +1,4 @@
+#include "pnc_planner/ego_vehicle.hpp"
 #include "pnc_planner/visualizer.hpp"
 #include <cmath>
 
@@ -17,6 +18,18 @@ int main(int argc, char **argv) {
     reference_points.push_back(p);
   }
   vis.publishReferenceLine(reference_points);
+
+  // 实例化车辆
+  pnc_planner::EgoVehicle ego(node);
+  double dt = 0.02;
+  ego.setPose(0.0, 0.0, 0.0);
+  ego.setCommand(0.7, 0.0);
+  auto timer = node->create_wall_timer(
+      std::chrono::milliseconds(20), [&ego, dt, node]() {
+        ego.updateState(dt);
+        RCLCPP_INFO_THROTTLE(node->get_logger(), *node->get_clock(), 1000,
+                             "车辆状态更新中...");
+      });
 
   rclcpp::spin(node);
   rclcpp::shutdown();
