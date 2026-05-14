@@ -25,4 +25,12 @@ struct VehicleInfo {
   VehicleState current_state = VehicleState::INIT;
 };
 
+struct WayPoint {
+  double x = 0.0;
+  double y = 0.0;
+  double heading = 0.0; // 航向角
+  double kappa = 0.0;   // 曲率
+  double s = 0.0;       // 弧长
+};
+
 } // namespace pnc_planner
