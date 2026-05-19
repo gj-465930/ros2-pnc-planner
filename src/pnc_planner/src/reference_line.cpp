@@ -4,7 +4,7 @@ namespace pnc_planner {
 
 bool Spline2D::init(const std::vector<double> &x,
                     const std::vector<double> &y) {
-  if (x.size() != y.size() || x.size() < 2) {
+  if (x.size() != y.size() || x.size() < 3) {
     return false;
   }
 
@@ -50,5 +50,33 @@ double Spline2D::calcKappa(double s) const {
 }
 
 double Spline2D::getTotalLength() const { return s_.empty() ? 0.0 : s_.back(); }
+
+bool ReferenceLine::init(const std::vector<double> &x,
+                         const std::vector<double> &y) {
+  if (!spline_.init(x, y)) {
+    return false;
+  }
+
+  length_ = spline_.getTotalLength();
+  return true;
+}
+
+WayPoint ReferenceLine::getWayPoint(double s) const {
+  if (s < 0.0)
+    s = 0.0;
+  if (s > length_)
+    s = length_;
+
+  WayPoint wp;
+  wp.s = s;
+  auto pos = spline_.calcPosition(s);
+  wp.x = pos[0];
+  wp.y = pos[1];
+
+  wp.heading = spline_.calcHeading(s);
+
+  wp.kappa = spline_.calcKappa(s);
+  return wp;
+}
 
 } // namespace pnc_planner

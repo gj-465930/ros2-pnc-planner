@@ -2,9 +2,6 @@
 
 #include <vector>
 
-#include "nav_msgs/msg/path.hpp"
-#include "rclcpp/rclcpp.hpp"
-
 #include "pnc_planner/common.hpp"
 #include "pnc_planner/math_utils/spline1d.hpp"
 
@@ -37,9 +34,17 @@ private:
 // 参考线生成器
 class ReferenceLine {
 public:
-  explicit ReferenceLine(rclcpp::Node::SharedPtr node);
+  ReferenceLine() = default;
+  ~ReferenceLine() = default;
+
+  bool init(const std::vector<double> &x, const std::vector<double> &y);
+  WayPoint getWayPoint(double s) const;
+  bool getFrenetPoint(double x, double y, double &s, double &l) const;
+
+  double getTotalLength() const { return length_; }
 
 private:
-  rclcpp::Node::SharedPtr node_;
+  Spline2D spline_;
+  double length_ = 0.0;
 };
 } // namespace pnc_planner
