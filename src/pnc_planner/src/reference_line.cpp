@@ -1,3 +1,54 @@
 #include "pnc_planner/reference_line.hpp"
 
-namespace pnc_planner {} // namespace pnc_planner
+namespace pnc_planner {
+
+bool Spline2D::init(const std::vector<double> &x,
+                    const std::vector<double> &y) {
+  if (x.size() != y.size() || x.size() < 2) {
+    return false;
+  }
+
+  s_.clear();
+  s_.push_back(0.0);
+
+  for (size_t i = 1; i < x.size(); ++i) {
+    double dx = x[i] - x[i - 1];
+    double dy = y[i] - y[i - 1];
+
+    double ds = std::hypot(dx, dy);
+    s_.push_back(s_.back() + ds);
+  }
+
+  x_spline_.init(s_, x);
+  y_spline_.init(s_, y);
+
+  return true;
+}
+
+std::vector<double> Spline2D::calcPosition(double s) const {
+  return {x_spline_.calc(s), y_spline_.calc(s)};
+}
+
+double Spline2D::calcHeading(double s) const {
+  double dx = x_spline_.calcDerivative(s);
+  double dy = y_spline_.calcDerivative(s);
+
+  return std::atan2(dy, dx);
+}
+
+double Spline2D::calcKappa(double s) const {
+  double dx = x_spline_.calcDerivative(s);
+  double dy = y_spline_.calcDerivative(s);
+
+  double ddx = x_spline_.calcSecondDerivative(s);
+  double ddy = y_spline_.calcSecondDerivative(s);
+
+  double tmp = dx * dx + dy * dy;
+  double denominator = std::pow(tmp, 1.5);
+
+  return std::abs(dx * ddy - ddx * dy) / denominator;
+}
+
+double Spline2D::getTotalLength() const { return s_.empty() ? 0.0 : s_.back(); }
+
+} // namespace pnc_planner
