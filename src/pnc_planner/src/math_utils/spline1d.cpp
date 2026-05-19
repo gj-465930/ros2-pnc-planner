@@ -1,4 +1,5 @@
 #include "pnc_planner/math_utils/spline1d.hpp"
+#include <algorithm>
 
 namespace pnc_planner {
 namespace math_utils {
@@ -59,11 +60,47 @@ bool Spline1D::init(const std::vector<double> &s,
   return true;
 }
 
-double Spline1D::calc(double) const {}
+double Spline1D::calc(double s) const {
+  // 先查询查询的值处于哪条曲线
+  int idx = Spline1D::searchIndex(s);
 
-double Spline1D::calcDerivative(double s) const {}
+  double ds = s - s_[idx];
 
-double Spline1D::calcSecondDerivative(double) const {}
+  return a_[idx] * ds * ds * ds + b_[idx] * ds * ds + c_[idx] * ds + d_[idx];
+}
+
+double Spline1D::calcDerivative(double s) const {
+  int idx = Spline1D::searchIndex(s);
+
+  double ds = s - s_[idx];
+
+  return 3.0 * a_[idx] * ds * ds + 2.0 * b_[idx] * ds + c_[idx];
+}
+
+double Spline1D::calcSecondDerivative(double s) const {
+  int idx = Spline1D::searchIndex(s);
+
+  double ds = s - s_[idx];
+
+  return 6.0 * a_[idx] * ds + 2.0 * b_[idx];
+}
+
+int Spline1D::searchIndex(double s) const {
+  if (s_.empty())
+    return 0;
+  // 边界拦截
+  if (s <= s_.front()) {
+    return 0;
+  }
+
+  if (s >= s_.back()) {
+    return s_.size() - 2;
+  }
+
+  auto it = std::upper_bound(s_.begin(), s_.end(), s);
+
+  return std::distance(s_.begin(), it) - 1;
+}
 
 } // namespace math_utils
 } // namespace pnc_planner
