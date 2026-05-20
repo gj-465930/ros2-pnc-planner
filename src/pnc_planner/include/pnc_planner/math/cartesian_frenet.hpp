@@ -3,12 +3,13 @@
 #include <functional>
 
 namespace pnc_planner {
-namespace math_utils {
+namespace math {
 
 /**
  * @brief 实现笛卡尔坐标系与frenet坐标系的转换
  */
 class CartesianFrenetConverter {
+public:
   CartesianFrenetConverter() = delete;
 
   using EvaluateCurveFunc =
@@ -45,5 +46,5 @@ class CartesianFrenetConverter {
                                 double &y);
 };
 
-} // namespace math_utils
+} // namespace math
 } // namespace pnc_planner

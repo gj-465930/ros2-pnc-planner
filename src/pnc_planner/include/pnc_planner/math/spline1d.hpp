@@ -3,7 +3,7 @@
 #include <vector>
 
 namespace pnc_planner {
-namespace math_utils {
+namespace math {
 
 class Spline1D {
 public:
@@ -35,5 +35,5 @@ private:
   std::vector<double> d_;
 };
 
-} // namespace math_utils
+} // namespace math
 } // namespace pnc_planner

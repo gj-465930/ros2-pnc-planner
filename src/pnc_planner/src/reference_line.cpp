@@ -1,4 +1,5 @@
 #include "pnc_planner/reference_line.hpp"
+#include "pnc_planner/math/cartesian_frenet.hpp"
 
 namespace pnc_planner {
 
@@ -62,10 +63,12 @@ bool ReferenceLine::init(const std::vector<double> &x,
 }
 
 WayPoint ReferenceLine::getWayPoint(double s) const {
-  if (s < 0.0)
+  if (s < 0.0) {
     s = 0.0;
-  if (s > length_)
+  }
+  if (s > length_) {
     s = length_;
+  }
 
   WayPoint wp;
   wp.s = s;
@@ -77,6 +80,20 @@ WayPoint ReferenceLine::getWayPoint(double s) const {
 
   wp.kappa = spline_.calcKappa(s);
   return wp;
+}
+
+bool ReferenceLine::getFrenetPoint(double x, double y, double &s,
+                                   double &l) const {
+  auto eval_func = [this](double s, double &x, double &y, double &heading) {
+    WayPoint wp = this->getWayPoint(s);
+    x = wp.x;
+    y = wp.y;
+    heading = wp.heading;
+  };
+
+  return math::CartesianFrenetConverter::cartesianToFrenet(
+
+      x, y, length_, eval_func, s, l);
 }
 
 } // namespace pnc_planner

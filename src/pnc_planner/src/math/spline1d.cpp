@@ -1,8 +1,8 @@
-#include "pnc_planner/math_utils/spline1d.hpp"
+#include "pnc_planner/math/spline1d.hpp"
 #include <algorithm>
 
 namespace pnc_planner {
-namespace math_utils {
+namespace math {
 
 bool Spline1D::init(const std::vector<double> &s,
                     const std::vector<double> &y) {
@@ -102,5 +102,5 @@ int Spline1D::searchIndex(double s) const {
   return std::distance(s_.begin(), it) - 1;
 }
 
-} // namespace math_utils
+} // namespace math
 } // namespace pnc_planner

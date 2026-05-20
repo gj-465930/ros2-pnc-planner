@@ -1,4 +1,4 @@
-#include "pnc_planner/math_utils/cartesian_frenet.hpp"
+#include "pnc_planner/math/cartesian_frenet.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -6,7 +6,7 @@
 #include <vector>
 
 namespace pnc_planner {
-namespace math_utils {
+namespace math {
 
 bool CartesianFrenetConverter::cartesianToFrenet(
     const double target_x, const double target_y, const double max_s,
@@ -91,5 +91,5 @@ bool CartesianFrenetConverter::frenetToCartesian(
   return true;
 }
 
-} // namespace math_utils
+} // namespace math
 } // namespace pnc_planner

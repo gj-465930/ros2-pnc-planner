@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "pnc_planner/common.hpp"
-#include "pnc_planner/math_utils/spline1d.hpp"
+#include "pnc_planner/math/spline1d.hpp"
 
 // 二维样条插值器
 
@@ -27,8 +27,8 @@ public:
 private:
   std::vector<double> s_;
 
-  math_utils::Spline1D x_spline_;
-  math_utils::Spline1D y_spline_;
+  math::Spline1D x_spline_;
+  math::Spline1D y_spline_;
 };
 
 // 参考线生成器
