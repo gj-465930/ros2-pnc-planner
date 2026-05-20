@@ -21,6 +21,7 @@ add_executable(pnc_planner
   src/ego_vehicle.cpp
   src/reference_line.cpp
   src/math_utils/spline1d.cpp
+  src/math_utils/cartesian_frenet.cpp
 )
 target_include_directories(pnc_planner PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
