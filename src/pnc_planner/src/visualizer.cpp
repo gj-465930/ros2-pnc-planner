@@ -1,14 +1,17 @@
 #include "pnc_planner/visualizer.hpp"
 
 namespace pnc_planner {
-Visualizer::Visualizer(rclcpp::Node::SharedPtr node) : node_(node) {
+Visualizer::Visualizer(rclcpp::Node *node) : node_(node) {
   rclcpp::QoS qos(10);
   qos.transient_local();
-  pub_ = node_->create_publisher<visualization_msgs::msg::Marker>(
-      "visualization_marker", qos);
+  marker_pub_ = node_->create_publisher<visualization_msgs::msg::Marker>(
+      "reference_line_marker", qos);
+  path_pub_ =
+      node->create_publisher<nav_msgs::msg::Path>("reference_line_path", qos);
 }
 
-void Visualizer::publishReferenceLine(
+// 传入point消息然后用mark画参考线
+void Visualizer::publishReferenceLineMarker(
     const std::vector<geometry_msgs::msg::Point> &points) {
   if (points.empty()) {
     RCLCPP_WARN(node_->get_logger(), "there is no points!");
@@ -36,8 +39,15 @@ void Visualizer::publishReferenceLine(
 
   marker.points = points;
 
-  pub_->publish(marker);
+  marker_pub_->publish(marker);
   RCLCPP_INFO(node_->get_logger(), "reference line published");
+}
+
+// 传入Path消息画参考线
+void Visualizer::publishReferenceLine(const nav_msgs::msg::Path &path) {
+  if (path_pub_ != nullptr) {
+    path_pub_->publish(path);
+  }
 }
 
 } // namespace pnc_planner

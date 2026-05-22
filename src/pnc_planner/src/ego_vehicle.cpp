@@ -6,7 +6,7 @@
 
 namespace pnc_planner {
 
-EgoVehicle::EgoVehicle(rclcpp::Node::SharedPtr node) : node_(node) {
+EgoVehicle::EgoVehicle(rclcpp::Node *node) : node_(node) {
   broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node_);
 
   vehicle_info_.pose.x = 0.0;
@@ -65,5 +65,7 @@ void EgoVehicle::setCommand(double v, double omega) {
   vehicle_info_.v = v;
   vehicle_info_.omega = omega;
 }
+
+VehicleInfo EgoVehicle::getVehicleState() { return vehicle_info_; }
 
 } // namespace pnc_planner

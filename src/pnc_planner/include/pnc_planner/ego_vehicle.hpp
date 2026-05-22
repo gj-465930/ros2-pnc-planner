@@ -8,7 +8,7 @@ namespace pnc_planner {
 
 class EgoVehicle {
 public:
-  explicit EgoVehicle(rclcpp::Node::SharedPtr node);
+  explicit EgoVehicle(rclcpp::Node *node);
 
   // 状态更新接口
   void updateState(double dt);
@@ -19,8 +19,11 @@ public:
   // 速度设置接口
   void setCommand(double v, double omega);
 
+  // 获取当前位置
+  VehicleInfo getVehicleState();
+
 private:
-  rclcpp::Node::SharedPtr node_;
+  rclcpp::Node *node_;
   std::unique_ptr<tf2_ros::TransformBroadcaster> broadcaster_;
 
   VehicleInfo vehicle_info_;

@@ -13,7 +13,6 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(nav_msgs REQUIRED)
-find_package(Eigen3 REQUIRED)
 
 add_executable(pnc_planner 
   src/main.cpp 
@@ -22,6 +21,7 @@ add_executable(pnc_planner
   src/reference_line.cpp
   src/math/spline1d.cpp
   src/math/cartesian_frenet.cpp
+  src/pnc_planner_node.cpp
 )
 target_include_directories(pnc_planner PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
