@@ -21,7 +21,7 @@ add_executable(pnc_planner
   src/reference_line.cpp
   src/math/spline1d.cpp
   src/math/cartesian_frenet.cpp
-  src/main/quintic_polynomial.cpp
+  src/math/quintic_polynomial.cpp
   src/pnc_planner_node.cpp
   src/lattice_planner.cpp
 )

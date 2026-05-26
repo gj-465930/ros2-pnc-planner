@@ -1,6 +1,8 @@
 # Created by https://www.toptal.com/developers/gitignore/api/ros2,c++,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=ros2,c++,visualstudiocode
 
+.DS_Store
+
 # clangd
 .clangd
 
@@ -88,4 +90,6 @@ AMENT_IGNORE
 .history
 .ionide
 
-# End of https://www.toptal.com/developers/gitignore/api/ros2,c++,visualstudiocode
+# End of https://www.toptal.com/developers/gitignore/api/ros2,c++,visualstudiocode# pixi environments
+.pixi/*
+!.pixi/config.toml

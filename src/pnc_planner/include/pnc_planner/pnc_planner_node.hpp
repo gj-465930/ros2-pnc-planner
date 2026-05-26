@@ -1,10 +1,10 @@
 #pragma once
 
 #include <memory>
-#include <rclcpp/rclcpp.hpp>
 #include <string>
 
 #include "nav_msgs/msg/path.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 #include "pnc_planner/ego_vehicle.hpp"
 #include "pnc_planner/reference_line.hpp"
@@ -25,7 +25,7 @@ private:
   void
   updateReferenceLine(const std::vector<geometry_msgs::msg::Point> &points);
   void publishReferenceLine();
-  void globalRouteCallback(const nav_msgs::msg::Path::SharedPtr &msg);
+  void globalRouteCallback(nav_msgs::msg::Path::ConstSharedPtr &msg);
 
   std::shared_ptr<EgoVehicle> ego_vehicle_;
   std::shared_ptr<Visualizer> visualizer_;

@@ -34,7 +34,7 @@ PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
   visualizer_ = std::make_shared<Visualizer>(this);
 
   global_route_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-      "/routing_path", 10, [this](const nav_msgs::msg::Path::SharedPtr &msg) {
+      "/routing_path", 10, [this](nav_msgs::msg::Path::ConstSharedPtr &msg) {
         this->globalRouteCallback(msg);
       });
 
@@ -88,8 +88,10 @@ void PncPlannerNode::testEgoVehicle() {
 
     ego_vehicle_->updateState(dt);
     auto egoState = ego_vehicle_->getVehicleState();
-    if (ref_line_->getFrenetPoint(egoState.pose.x, egoState.pose.y, curr_s, curr_l)) {
-      RCLCPP_INFO(this->get_logger(), "[frenet]: s = %.2f, l = %.2f", curr_s, curr_l);
+    if (ref_line_->getFrenetPoint(egoState.pose.x, egoState.pose.y, curr_s,
+                                  curr_l)) {
+      RCLCPP_INFO(this->get_logger(), "[frenet]: s = %.2f, l = %.2f", curr_s,
+                  curr_l);
     }
   }
 }
@@ -112,7 +114,7 @@ void PncPlannerNode::updateReferenceLine(
 }
 
 void PncPlannerNode::publishReferenceLine() {
-  if (ref_line_ == nullptr || ref_line_->getTotalLength() < 0.0) {
+  if (ref_line_ == nullptr || ref_line_->getTotalLength() <= 0.0) {
     return;
   }
 
@@ -146,7 +148,7 @@ void PncPlannerNode::publishReferenceLine() {
 }
 
 void PncPlannerNode::globalRouteCallback(
-    const nav_msgs::msg::Path::SharedPtr &msg) {
+    nav_msgs::msg::Path::ConstSharedPtr &msg) {
   if (msg->poses.size() < 2)
     return;
 

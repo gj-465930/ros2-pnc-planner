@@ -25,7 +25,8 @@ public:
    * @param l [out] 算出的横向偏差
    * @return true 转换成功; false 转换失败
    */
-  static bool cartesianToFrenet(const double target_x, const double target_y,
+  static bool cartesianToFrenet(const double target_x, 
+                                const double target_y,
                                 const double max_s,
                                 const EvaluateCurveFunc &eval_func, double &s,
                                 double &l);
