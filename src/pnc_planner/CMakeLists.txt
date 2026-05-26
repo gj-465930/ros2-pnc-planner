@@ -21,7 +21,9 @@ add_executable(pnc_planner
   src/reference_line.cpp
   src/math/spline1d.cpp
   src/math/cartesian_frenet.cpp
+  src/main/quintic_polynomial.cpp
   src/pnc_planner_node.cpp
+  src/lattice_planner.cpp
 )
 target_include_directories(pnc_planner PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

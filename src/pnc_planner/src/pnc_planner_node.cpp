@@ -33,6 +33,11 @@ PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
 
   visualizer_ = std::make_shared<Visualizer>(this);
 
+  global_route_sub_ = this->create_subscription<nav_msgs::msg::Path>(
+      "/routing_path", 10, [this](const nav_msgs::msg::Path::SharedPtr &msg) {
+        this->globalRouteCallback(msg);
+      });
+
   timer_ = this->create_wall_timer(std::chrono::milliseconds(100),
                                    [this]() { this->timerCallback(); });
 }
@@ -76,13 +81,17 @@ void PncPlannerNode::testSinPathVisual() {
 }
 
 void PncPlannerNode::testEgoVehicle() {
-  ego_vehicle_->updateState(0.1);
+  if (ref_line_ && ref_line_->getTotalLength() > 0.0) {
+    double curr_s = 0.0;
+    double curr_l = 0.0;
+    double dt = 0.1;
 
-  VehicleInfo state = ego_vehicle_->getVehicleState();
-
-  RCLCPP_INFO(this->get_logger(),
-              "x = %6.2f, y = %6.2f, yaw = %6.2f, v = %6.2f,", state.pose.x,
-              state.pose.y, state.pose.yaw, state.v);
+    ego_vehicle_->updateState(dt);
+    auto egoState = ego_vehicle_->getVehicleState();
+    if (ref_line_->getFrenetPoint(egoState.pose.x, egoState.pose.y, curr_s, curr_l)) {
+      RCLCPP_INFO(this->get_logger(), "[frenet]: s = %.2f, l = %.2f", curr_s, curr_l);
+    }
+  }
 }
 
 void PncPlannerNode::updateReferenceLine(
@@ -134,6 +143,25 @@ void PncPlannerNode::publishReferenceLine() {
     path.poses.push_back(pose);
   }
   visualizer_->publishReferenceLine(path);
+}
+
+void PncPlannerNode::globalRouteCallback(
+    const nav_msgs::msg::Path::SharedPtr &msg) {
+  if (msg->poses.size() < 2)
+    return;
+
+  std::vector<geometry_msgs::msg::Point> raw_points;
+
+  for (const auto &pose_stamp : msg->poses) {
+    geometry_msgs::msg::Point p;
+    p.x = pose_stamp.pose.position.x;
+    p.y = pose_stamp.pose.position.y;
+    p.z = pose_stamp.pose.position.z;
+
+    raw_points.push_back(p);
+  }
+
+  this->updateReferenceLine(raw_points);
 }
 
 } // namespace pnc_planner
