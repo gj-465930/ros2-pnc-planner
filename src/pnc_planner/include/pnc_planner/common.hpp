@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "geometry_msgs/msg/point.hpp"
+
 namespace pnc_planner {
 
 enum class VehicleState : uint8_t {
@@ -32,5 +34,7 @@ struct WayPoint {
   double kappa = 0.0;   // 曲率
   double s = 0.0;       // 弧长
 };
+
+using Trajectory = std::vector<geometry_msgs::msg::Point>;
 
 } // namespace pnc_planner

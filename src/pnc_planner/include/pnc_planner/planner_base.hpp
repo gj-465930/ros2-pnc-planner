@@ -4,15 +4,13 @@
  */
 #pragma once
 
+#include <string>
 #include <vector>
 
-#include "geometry_msgs/msg/point.hpp"
 #include "pnc_planner/common.hpp"
 #include "pnc_planner/reference_line.hpp"
 
 namespace pnc_planner {
-
-using Trajectory = std::vector<geometry_msgs::msg::Point>;
 
 // clang-format off
 class PlannerBase {
@@ -23,6 +21,8 @@ public:
   virtual bool plan(const VehicleInfo &ego, 
                     const ReferenceLine &ref_line, 
                     Trajectory &out_trajectory) = 0;
+
+   virtual std::string get_name() const = 0;
 };
 
 } // namespace pnc_planner
