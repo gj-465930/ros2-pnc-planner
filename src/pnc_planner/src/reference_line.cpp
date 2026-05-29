@@ -81,7 +81,16 @@ WayPoint ReferenceLine::getWayPoint(double s) const {
   wp.kappa = spline_.calcKappa(s);
   return wp;
 }
-
+/**
+ * @brief
+ *
+ * @param x[in]
+ * @param y[in]
+ * @param s[out]
+ * @param l[out]
+ * @return true 转换成功
+ * @return false 转换失败
+ */
 bool ReferenceLine::getFrenetPoint(double x, double y, double &s,
                                    double &l) const {
   auto eval_func = [this](double s, double &x, double &y, double &heading) {

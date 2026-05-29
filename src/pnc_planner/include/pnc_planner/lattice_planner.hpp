@@ -40,13 +40,22 @@ private:
   );
 
   /**
-   * @brief 生成纵向候选轨迹
+   * @brief 读取状态机器分发任务
    * 
    * @param ego 
    * @return std::vector<math::QuinticPolynomial> 
    */
   std::vector<math::QuinticPolynomial> generate_longitudinal_trajectories(
-    const VehicleInfo& ego
+    const VehicleInfo &ego
+  );
+
+  // 生成巡航加减速轨迹
+  std::vector<math::QuinticPolynomial> generate_cruise_trajectories(
+    const VehicleInfo &ego
+  );
+  // 生成紧急刹车轨迹
+  std::vector<math::QuinticPolynomial> generate_emergency_trajectories(
+    const VehicleInfo &ego
   );
 
   /**
