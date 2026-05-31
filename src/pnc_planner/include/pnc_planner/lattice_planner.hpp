@@ -29,57 +29,47 @@ public:
   }
 
 private:
-  /**
-   * @brief 生成横向候选轨迹
-   * 
-   * @return std::vector<math::QuinticPolynomial> 
-   */
+  //生成横向候选轨迹
   std::vector<math::QuinticPolynomial> generate_lateral_trajectories(
     const VehicleInfo& ego,
     const ReferenceLine& ref_line
   );
 
-  /**
-   * @brief 读取状态机器分发任务
-   * 
-   * @param ego 
-   * @return std::vector<math::QuinticPolynomial> 
-   */
+  //读取状态机器分发任务
   std::vector<math::QuinticPolynomial> generate_longitudinal_trajectories(
-    const VehicleInfo &ego
+    const VehicleInfo &ego,
+    const ReferenceLine &ref_line
   );
 
   // 生成巡航加减速轨迹
   std::vector<math::QuinticPolynomial> generate_cruise_trajectories(
-    const VehicleInfo &ego
-  );
-  // 生成紧急刹车轨迹
-  std::vector<math::QuinticPolynomial> generate_emergency_trajectories(
-    const VehicleInfo &ego
+    const VehicleInfo &ego,
+    const ReferenceLine &ref_line
   );
 
-  /**
-   * @brief cost_func
-   * 
-   * @param lat_trajs  横向候选集 
-   * @param lon_trajs  纵向候选集
-   * @return std::pair<int, int> 
-   */
+  // 生成紧急刹车轨迹
+  std::vector<math::QuinticPolynomial> generate_emergency_trajectories(
+    const VehicleInfo &ego,
+    const ReferenceLine &ref_line
+  );
+
   std::pair<int, int> evaluate_and_select_best_trajectory(
     const std::vector<math::QuinticPolynomial>& lat_trajs,
     const std::vector<math::QuinticPolynomial>& lon_trajs
   );
+  // 碰撞与越界检测
+  bool is_trajectory_vaild(
+    const math::QuinticPolynomial& lat_traj,
+    const math::QuinticPolynomial& lon_traj
+  );
 
-  /**
-   * @brief 1D映射到2D
-   * 
-   * @param best_lat 
-   * @param best_lon 
-   * @param ref_line 
-   * @param out_trajectory 
-   * @return true 
-   * @return false 
-   */
+  // 打分
+  double calculate_trajectory_cost(
+    const math::QuinticPolynomial &lat_traj,
+    const math::QuinticPolynomial &lon_traj
+  );
+
+  // 1D转2D
   bool combine_and_transform_to_2d(
     const math::QuinticPolynomial& best_lat,
     const math::QuinticPolynomial& best_lon,

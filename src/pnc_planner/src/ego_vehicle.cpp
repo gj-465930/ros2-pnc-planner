@@ -14,23 +14,37 @@ EgoVehicle::EgoVehicle(rclcpp::Node *node) : node_(node) {
   vehicle_info_.pose.yaw = 0.0;
 
   vehicle_info_.v = 0.0;
+  vehicle_info_.a = 0.0;
   vehicle_info_.omega = 0.0;
   vehicle_info_.current_state = VehicleState::INIT;
 }
 
 void EgoVehicle::updateState(double dt) {
-  if (std::abs(vehicle_info_.v) < 0.01) {
+  double v0 = vehicle_info_.v;
+  double yaw0 = vehicle_info_.pose.yaw;
+
+  double v1 = v0 + vehicle_info_.a * dt;
+  double delta_s = 0.0;
+
+  if (v1 < 0.0 && v0 >= 0.0) {
+    double t_stop = v0 / std::abs(vehicle_info_.a);
+    delta_s = v0 * dt + 0.5 * vehicle_info_.a * t_stop * t_stop;
+
+    vehicle_info_.v = 0.0;
+    vehicle_info_.a = 0.0;
+  } else {
+    delta_s = v0 * dt + 0.5 * vehicle_info_.a * dt * dt;
+    vehicle_info_.v = v1;
+  }
+
+  if (std::abs(vehicle_info_.v) < 0.01 && std::abs(vehicle_info_.a) < 0.01) {
     vehicle_info_.current_state = VehicleState::STANDBY;
   } else {
     vehicle_info_.current_state = VehicleState::CRUISING;
   }
 
-  vehicle_info_.pose.x +=
-      vehicle_info_.v * std::cos(vehicle_info_.pose.yaw) * dt;
-
-  vehicle_info_.pose.y +=
-      vehicle_info_.v * std::sin(vehicle_info_.pose.yaw) * dt;
-
+  vehicle_info_.pose.x = delta_s * std::cos(yaw0);
+  vehicle_info_.pose.y = delta_s * std::sin(yaw0);
   vehicle_info_.pose.yaw += vehicle_info_.omega * dt;
 
   tf2::Quaternion qtn;
@@ -61,8 +75,9 @@ void EgoVehicle::setPose(double x, double y, double yaw) {
   vehicle_info_.pose.yaw = yaw;
 }
 
-void EgoVehicle::setCommand(double v, double omega) {
+void EgoVehicle::setCommand(double v, double a, double omega) {
   vehicle_info_.v = v;
+  vehicle_info_.a = a;
   vehicle_info_.omega = omega;
 }
 

@@ -17,7 +17,7 @@ public:
   void setPose(double x, double y, double yaw);
 
   // 速度设置接口
-  void setCommand(double v, double omega);
+  void setCommand(double v, double a, double omega);
 
   // 获取当前位置
   VehicleInfo getVehicleState();

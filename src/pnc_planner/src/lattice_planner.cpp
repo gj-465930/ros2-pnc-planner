@@ -16,7 +16,7 @@ bool LatticePlanner::plan(const VehicleInfo &ego, const ReferenceLine &ref_line,
   }
 
   // 生成纵向候选轨迹
-  auto lon_trajs = generate_longitudinal_trajectories(ego);
+  auto lon_trajs = generate_longitudinal_trajectories(ego, ref_line);
   if (lon_trajs.empty()) {
     std::cerr << "[LatticePlanner] Error: 纵向轨迹生成失败" << std::endl;
     return false;
@@ -97,22 +97,150 @@ LatticePlanner::generate_lateral_trajectories(const VehicleInfo &ego,
 }
 
 std::vector<math::QuinticPolynomial>
-LatticePlanner::generate_longitudinal_trajectories(const VehicleInfo &ego) {
+LatticePlanner::generate_longitudinal_trajectories(
+    const VehicleInfo &ego, const ReferenceLine &ref_line) {
   switch (ego.current_state) {
   case pnc_planner::VehicleState::CRUISING:
-    return generate_cruise_trajectories(ego);
+    return generate_cruise_trajectories(ego, ref_line);
 
   case pnc_planner::VehicleState::EMERGENCY:
   case pnc_planner::VehicleState::INIT:
   case pnc_planner::VehicleState::STANDBY:
   default:
-    return generate_emergency_trajectories(ego);
+    return generate_emergency_trajectories(ego, ref_line);
   }
 }
 
 std::vector<math::QuinticPolynomial>
-LatticePlanner::generate_cruise_trajectories(const VehicleInfo &ego) {
+LatticePlanner::generate_cruise_trajectories(const VehicleInfo &ego,
+                                             const ReferenceLine &ref_line) {
   std::vector<math::QuinticPolynomial> lon_cruise_trajs;
+
+  double s0, l0;
+  bool is_trasform = ref_line.getFrenetPoint(ego.pose.x, ego.pose.y, s0, l0);
+
+  if (!is_trasform) {
+    std::cerr << "[LatticePlanner] Error: 坐标转换失败";
+    return lon_cruise_trajs;
+  }
+
+  double v0 = ego.v;
+  double a0 = ego.a;
+
+  double cruise_speed = 15.0;
+
+  std::vector<double> sample_v = {cruise_speed, cruise_speed - 1.0,
+                                  cruise_speed + 1.0};
+  std::vector<double> sample_T = {3.0, 4.0, 5.0};
+
+  lon_cruise_trajs.reserve(sample_v.size() * sample_T.size());
+
+  for (const double T : sample_T) {
+    for (const double v1 : sample_v) {
+      double s1 = s0 + ((v0 + v1) / 2.0) * T;
+      double a1 = 0.0;
+
+      lon_cruise_trajs.emplace_back(s0, v0, a0, s1, v1, a1, T);
+    }
+  }
+  return lon_cruise_trajs;
+}
+
+std::vector<math::QuinticPolynomial>
+LatticePlanner::generate_emergency_trajectories(const VehicleInfo &ego,
+                                                const ReferenceLine &ref_line) {
+  std::vector<math::QuinticPolynomial> lon_emergency_trajs;
+
+  double s0 = 0.0;
+  double l0 = 0.0;
+
+  bool is_trasform = ref_line.getFrenetPoint(ego.pose.x, ego.pose.y, s0, l0);
+
+  if (!is_trasform) {
+    std::cerr << "[LatticePlanner] Error: 停车规划s0获取失败" << std::endl;
+    return lon_emergency_trajs;
+  }
+
+  double v0 = ego.v;
+  double a0 = ego.a;
+
+  // INIT/STANDBY 状态
+  if (v0 < 0.1) {
+    double T = 3.0;
+    lon_emergency_trajs.emplace_back(s0, 0.0, 0.0, s0, 0.0, 0.0, T);
+    return lon_emergency_trajs;
+  }
+
+  // 刹车
+  std::vector<double> sample_decel = {-3.0, -5.0, -8.0};
+
+  lon_emergency_trajs.reserve(sample_decel.size());
+  for (const double decel : sample_decel) {
+    double T = (0 - v0) / decel;
+
+    // 设置下限
+    if (T < 0.5)
+      T = 0.5;
+
+    double v1 = 0.0;
+    double a1 = 0.0;
+
+    double s1 = s0 + (v0 / 2) * T;
+
+    lon_emergency_trajs.emplace_back(s0, v0, a0, s1, v1, a1, T);
+  }
+  return lon_emergency_trajs;
+}
+
+std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
+    const std::vector<math::QuinticPolynomial> &lat_trajs,
+    const std::vector<math::QuinticPolynomial> &lon_trajs) {
+
+  // 初始化最小代价
+  double min_cost = std::numeric_limits<double>::max();
+  int best_lat_idx = -1;
+  int best_lon_idx = -1;
+
+  for (size_t i = 0; i < lat_trajs.size(); ++i) {
+    for (size_t j = 0; j < lon_trajs.size(); ++j) {
+
+      const auto &lat_traj = lat_trajs[i];
+      const auto &lon_traj = lon_trajs[j];
+
+      if (!is_trajectory_vaild(lat_traj, lon_traj)) {
+        continue;
+      }
+
+      double current_cost = calculate_trajectory_cost(lat_traj, lon_traj);
+
+      if (current_cost < min_cost) {
+        min_cost = current_cost;
+        best_lat_idx = static_cast<int>(i);
+        best_lon_idx = static_cast<int>(j);
+      }
+    }
+  }
+
+  return {best_lat_idx, best_lon_idx};
+}
+
+bool LatticePlanner::is_trajectory_vaild(
+    const math::QuinticPolynomial &lat_traj,
+    const math::QuinticPolynomial &lon_traj) {}
+
+double LatticePlanner::calculate_trajectory_cost(
+    const math::QuinticPolynomial &lat_traj,
+    const math::QuinticPolynomial &lon_traj) {}
+
+bool LatticePlanner::combine_and_transform_to_2d(
+    const math::QuinticPolynomial &best_lat,
+    const math::QuinticPolynomial &best_lon, const ReferenceLine &ref_line,
+    Trajectory &out_trajectory) {
+
+  out_trajectory.clear();
+
+  double T = best_lat.get_T();
+  double dt = 0.1;
 }
 
 } // namespace pnc_planner

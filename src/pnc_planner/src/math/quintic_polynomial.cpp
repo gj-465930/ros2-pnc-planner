@@ -5,7 +5,8 @@ namespace math {
 
 // clang-format off
 QuinticPolynomial::QuinticPolynomial(double x0, double v0, double a0,    
-                                     double x1, double v1, double a1, double T) {
+                                     double x1, double v1, double a1, double T)
+                                     :T_(T){
   c0_ = x0;
   c1_ = v0;
   c2_ = 0.5 * a0;

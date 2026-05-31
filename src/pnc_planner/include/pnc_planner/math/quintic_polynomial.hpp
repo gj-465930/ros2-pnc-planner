@@ -37,6 +37,8 @@ public:
   double evaluate_d(double s) const;
   // 计算加速度
   double evaluate_dd(double s) const;
+  // 获取T
+  double get_T() const { return T_; }
 
 private:
   double c0_ = 0.0;
@@ -45,6 +47,8 @@ private:
   double c3_ = 0.0;
   double c4_ = 0.0;
   double c5_ = 0.0;
+
+  double T_;
 };
 
 } // namespace math
