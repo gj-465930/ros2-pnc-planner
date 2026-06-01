@@ -75,7 +75,8 @@ bool CartesianFrenetConverter::frenetToCartesian(
   }
 
   double ref_x = 0.0, ref_y = 0.0, ref_heading = 0.0;
-  eval_func(s, ref_x, ref_y, ref_heading);
+  double eval_s = s;
+  eval_func(eval_s, ref_x, ref_y, ref_heading);
 
   // 切向量
   double tau_x = std::cos(ref_heading);

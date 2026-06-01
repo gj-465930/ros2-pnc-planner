@@ -239,8 +239,54 @@ bool LatticePlanner::combine_and_transform_to_2d(
 
   out_trajectory.clear();
 
-  double T = best_lat.get_T();
+  double T = best_lon.get_T();
   double dt = 0.1;
+
+  double s0 = best_lon.evaluate(0.0);
+
+  for (double t = 0.0; t <= T; t += dt) {
+    // 获取纵向状态
+    double s = best_lon.evaluate(t);
+    double v_lon = best_lon.evaluate_d(t);
+    double a_lon = best_lon.evaluate_dd(t);
+
+    // 获取横向状态
+    double ds = s - s0;
+    if (ds < 0)
+      ds = 0;
+
+    double l = best_lat.evaluate(ds);
+    double dl = best_lat.evaluate_d(ds);
+    double ddl = best_lat.evaluate_dd(ds);
+
+    // yaw为在(x, y)下参考线的偏向角
+    double x = 0.0, y = 0.0, yaw_ref = 0.0;
+
+    bool is_success = ref_line.getCartesianPoint(s, l, x, y, yaw_ref);
+
+    if (!is_success) {
+      std::cerr << "[LatticePlanner]投影失败！坐标断裂位于 s = " << s
+                << std::endl;
+      out_trajectory.clear();
+      return false;
+    }
+
+    double delta_theta = std::atan(dl);
+    double kappa_ref = ref_line.getWayPoint(s).kappa;
+
+    TrajectoryPoint pt;
+    pt.x = x;
+    pt.y = y;
+    pt.heading = yaw_ref + delta_theta;
+    pt.kappa = ddl + kappa_ref;
+
+    pt.v = v_lon;
+    pt.a = a_lon;
+
+    out_trajectory.push_back(pt);
+  }
+
+  return true;
 }
 
 } // namespace pnc_planner

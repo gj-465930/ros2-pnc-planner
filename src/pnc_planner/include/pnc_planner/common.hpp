@@ -36,6 +36,18 @@ struct WayPoint {
   double s = 0.0;       // 弧长
 };
 
-using Trajectory = std::vector<geometry_msgs::msg::Point>;
+struct TrajectoryPoint {
+  double x = 0.0;
+  double y = 0.0;
+  double heading = 0.0;
+
+  double v = 0.0;
+  double a = 0.0;
+  double kappa = 0.0;
+
+  double t = 0.0;
+};
+
+using Trajectory = std::vector<TrajectoryPoint>;
 
 } // namespace pnc_planner

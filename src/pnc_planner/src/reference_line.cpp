@@ -93,7 +93,7 @@ WayPoint ReferenceLine::getWayPoint(double s) const {
  */
 bool ReferenceLine::getFrenetPoint(double x, double y, double &s,
                                    double &l) const {
-  auto eval_func = [this](double s, double &x, double &y, double &heading) {
+  auto eval_func = [this](double &s, double &x, double &y, double &heading) {
     WayPoint wp = this->getWayPoint(s);
     x = wp.x;
     y = wp.y;
@@ -103,6 +103,25 @@ bool ReferenceLine::getFrenetPoint(double x, double y, double &s,
   return math::CartesianFrenetConverter::cartesianToFrenet(
 
       x, y, length_, eval_func, s, l);
+}
+
+bool ReferenceLine::getCartesianPoint(double s, double l, double &x, double &y,
+                                      double &yaw) const {
+  auto eval_func = [this](double &s, double &x, double &y, double &heading) {
+    WayPoint wp = this->getWayPoint(s);
+    x = wp.x;
+    y = wp.y;
+    heading = wp.heading;
+  };
+
+  bool flag = math::CartesianFrenetConverter::frenetToCartesian(
+      s, l, length_, eval_func, x, y);
+
+  if (flag) {
+    yaw = spline_.calcHeading(s);
+  }
+
+  return flag;
 }
 
 } // namespace pnc_planner

@@ -39,7 +39,10 @@ public:
 
   bool init(const std::vector<double> &x, const std::vector<double> &y);
   WayPoint getWayPoint(double s) const;
+
   bool getFrenetPoint(double x, double y, double &s, double &l) const;
+
+  bool getCartesianPoint(double s, double l, double &x, double &y, double &yaw) const;
 
   double getTotalLength() const { return length_; }
 
