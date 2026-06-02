@@ -1,0 +1,12 @@
+<robot name="ego_vehicle">
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="4.5 2.0 1.5"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0.1 0.3 0.8 0.7"/>
+      </material>
+    </visual>
+  </link>
+</robot>

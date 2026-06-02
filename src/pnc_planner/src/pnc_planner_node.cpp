@@ -14,6 +14,19 @@ PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
   declare_parameter("lattice_planner.limits.max_jerk", 4.0);
   declare_parameter("lattice_planner.limits.max_lat_offset", 3.5);
 
+  // 读取参数
+  LatticePlannerConfig config;
+  config.max_v = get_parameter("lattice_planner.limits.max_v").as_double();
+  config.min_v = get_parameter("lattice_planner.limits.min_v").as_double();
+  config.max_acc = get_parameter("lattice_planner.limits.max_acc").as_double();
+  config.min_acc = get_parameter("lattice_planner.limits.min_acc").as_double();
+  config.max_jerk =
+      get_parameter("lattice_planner.limits.max_jerk").as_double();
+  config.max_lat_offset =
+      get_parameter("lattice_planner.limits.max_lat_offset").as_double();
+
+  lattice_planner_ = std::make_shared<LatticePlanner>(config);
+
   // 初始化自车
   ego_vehicle_ = std::make_shared<EgoVehicle>(this);
   ego_vehicle_->setCommand(0.2, 0.2, 0.0);

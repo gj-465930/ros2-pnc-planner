@@ -277,7 +277,9 @@ bool LatticePlanner::is_trajectory_valid(
 
 double LatticePlanner::calculate_trajectory_cost(
     const math::QuinticPolynomial &lat_traj,
-    const math::QuinticPolynomial &lon_traj) {}
+    const math::QuinticPolynomial &lon_traj) {
+      
+    }
 
 bool LatticePlanner::combine_and_transform_to_2d(
     const math::QuinticPolynomial &best_lat,
