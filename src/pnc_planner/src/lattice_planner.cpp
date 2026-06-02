@@ -83,7 +83,7 @@ LatticePlanner::generate_lateral_trajectories(const VehicleInfo &ego,
 
   // 纵向探查深度
   double curr_v = ego.v;
-  double planning_time = 5.0;
+  double planning_time = config_.planning_time;
   double min_s = 15.0;
   double total_s = std::max(min_s, curr_v * planning_time);
 
@@ -129,10 +129,11 @@ LatticePlanner::generate_cruise_trajectories(const VehicleInfo &ego,
   double v0 = ego.v;
   double a0 = ego.a;
 
-  double cruise_speed = 15.0;
+  double cruise_speed = config_.target_speed;
 
-  std::vector<double> sample_v = {cruise_speed, cruise_speed - 1.0,
-                                  cruise_speed + 1.0};
+  std::vector<double> sample_v = {cruise_speed - 2.0, cruise_speed - 1.0,
+                                  cruise_speed, cruise_speed + 1.0,
+                                  cruise_speed + 2.0};
   std::vector<double> sample_T = {3.0, 4.0, 5.0};
 
   lon_cruise_trajs.reserve(sample_v.size() * sample_T.size());
@@ -278,8 +279,49 @@ bool LatticePlanner::is_trajectory_valid(
 double LatticePlanner::calculate_trajectory_cost(
     const math::QuinticPolynomial &lat_traj,
     const math::QuinticPolynomial &lon_traj) {
-      
+
+  double total_cost = 0.0;
+
+  double T = lon_traj.get_T();
+  double dt = 0.1;
+  double s0 = lon_traj.evaluate(0);
+
+  double lon_comfort_cost = 0.0;
+  double lat_comfort_cost = 0.0;
+  double lat_offset_cost = 0.0;
+
+  double end_v = lon_traj.evaluate_d(T);
+  double speed_diff = config_.target_speed - end_v;
+
+  total_cost += config_.w_speed * (speed_diff * speed_diff);
+
+  for (double t = 0.0; t <= T; t += dt) {
+    // 纵向
+    double s = lon_traj.evaluate(t);
+    double a = lon_traj.evaluate_dd(t);
+    double jerk = lon_traj.evaluate_ddd(t);
+
+    lon_comfort_cost += (a * a + jerk * jerk);
+
+    // 横向
+    double ds = s - s0;
+    if (ds < 0.0) {
+      ds = 0.0;
     }
+    double l = lat_traj.evaluate(ds);
+    double dl = lat_traj.evaluate_d(ds);
+    double ddl = lat_traj.evaluate_dd(ds);
+
+    lat_comfort_cost += (dl * dl + ddl * ddl);
+    lat_offset_cost += (l * l);
+  }
+
+  total_cost += config_.w_lat * lat_comfort_cost +
+                config_.w_lon * lon_comfort_cost +
+                config_.w_offset * lat_offset_cost;
+
+  return total_cost;
+}
 
 bool LatticePlanner::combine_and_transform_to_2d(
     const math::QuinticPolynomial &best_lat,

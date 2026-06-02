@@ -6,3 +6,11 @@ lattice_planner:
     min_acc: -5.0
     max_jerk: 4.0
     max_lat_offset: 3.5
+    target_speed: 15.0;
+    planning_time: 5.0;
+
+  weights:
+    w_lat: 1.0
+    w_lon: 10.0
+    w_offset: 0.3
+    w_speed: 1.0

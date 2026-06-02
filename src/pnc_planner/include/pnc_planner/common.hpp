@@ -52,12 +52,21 @@ struct TrajectoryPoint {
 using Trajectory = std::vector<TrajectoryPoint>;
 
 struct LatticePlannerConfig {
+  // limits
   double max_v = 0.0;
   double min_v = 0.0;
   double max_acc = 0.0;
   double min_acc = 0.0;
   double max_jerk = 0.0;
   double max_lat_offset = 0.0;
+  double target_speed = 0.0;
+  double planning_time = 0.0;
+
+  // weights
+  double w_lat = 0.0;
+  double w_lon = 0.0;
+  double w_offset = 0.0;
+  double w_speed = 0.0;
 };
 
 struct Obstacle {

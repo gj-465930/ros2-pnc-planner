@@ -7,12 +7,21 @@
 namespace pnc_planner {
 PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
   // 声明参数
+  // limits
   declare_parameter("lattice_planner.limits.max_v", 35.0);
   declare_parameter("lattice_planner.limits.min_v", -0.1);
   declare_parameter("lattice_planner.limits.max_acc", 3.0);
   declare_parameter("lattice_planner.limits.min_acc", -5.0);
   declare_parameter("lattice_planner.limits.max_jerk", 4.0);
   declare_parameter("lattice_planner.limits.max_lat_offset", 3.5);
+  declare_parameter("lattice_planner.limits.target_speed", 15.0);
+  declare_parameter("lattice_planner.limits.planning_time", 5.0);
+  // weights
+  declare_parameter("lattice_planner.weights.w_lat_acc", "1.0");
+  declare_parameter("lattice_planner.weights.w_lat_jerk", "0.5");
+  declare_parameter("lattice_planner.weights.w_lon_jerk", "1.0");
+  declare_parameter("lattice_planner.weights.w_offset", "2.0");
+  declare_parameter("lattice_planner.weights.w_speed", "0.8");
 
   // 读取参数
   LatticePlannerConfig config;
@@ -24,6 +33,16 @@ PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
       get_parameter("lattice_planner.limits.max_jerk").as_double();
   config.max_lat_offset =
       get_parameter("lattice_planner.limits.max_lat_offset").as_double();
+  config.target_speed =
+      get_parameter("lattice_planner.target_speed").as_double();
+  config.planning_time =
+      get_parameter("lattice_planner.limits.planning_time").as_double();
+
+  config.w_lat = get_parameter("lattice_planner.weights.w_lat").as_double();
+  config.w_lon = get_parameter("lattice_planner.weights.w_lon").as_double();
+  config.w_offset =
+      get_parameter("lattice_planner.weights.w_offset").as_double();
+  config.w_speed = get_parameter("lattice_planner.weights.w_speed").as_double();
 
   lattice_planner_ = std::make_shared<LatticePlanner>(config);
 
