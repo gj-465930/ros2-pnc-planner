@@ -6,6 +6,13 @@
 
 namespace pnc_planner {
 PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
+  // 声明参数
+  declare_parameter("lattice_planner.limits.max_v", 35.0);
+  declare_parameter("lattice_planner.limits.min_v", -0.1);
+  declare_parameter("lattice_planner.limits.max_acc", 3.0);
+  declare_parameter("lattice_planner.limits.min_acc", -5.0);
+  declare_parameter("lattice_planner.limits.max_jerk", 4.0);
+  declare_parameter("lattice_planner.limits.max_lat_offset", 3.5);
 
   // 初始化自车
   ego_vehicle_ = std::make_shared<EgoVehicle>(this);

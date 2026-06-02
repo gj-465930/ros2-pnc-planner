@@ -6,6 +6,7 @@
 
 namespace pnc_planner {
 
+// 车辆状态机
 enum class VehicleState : uint8_t {
   INIT = 0,
   STANDBY = 1,
@@ -49,5 +50,20 @@ struct TrajectoryPoint {
 };
 
 using Trajectory = std::vector<TrajectoryPoint>;
+
+struct LatticePlannerConfig {
+  double max_v = 0.0;
+  double min_v = 0.0;
+  double max_acc = 0.0;
+  double min_acc = 0.0;
+  double max_jerk = 0.0;
+  double max_lat_offset = 0.0;
+};
+
+struct Obstacle {
+  double x = 0.0, y = 0.0;
+  double length = 0.0, width = 0.0;
+  double heading = 0.0;
+};
 
 } // namespace pnc_planner

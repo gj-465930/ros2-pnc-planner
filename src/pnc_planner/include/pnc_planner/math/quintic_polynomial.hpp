@@ -37,6 +37,8 @@ public:
   double evaluate_d(double s) const;
   // 计算加速度
   double evaluate_dd(double s) const;
+  // 计算加加速度
+  double evaluate_ddd(double s) const;
   // 获取T
   double get_T() const { return T_; }
 

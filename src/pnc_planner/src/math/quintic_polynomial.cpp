@@ -49,5 +49,11 @@ double QuinticPolynomial::evaluate_dd(double s) const {
          20 * c5_ * s * s * s;
 }
 
+double QuinticPolynomial::evaluate_ddd(double s) const{
+  return 6 * c3_ +
+         24 * c4_ * s +
+         60 * c5_ * s * s;
+}
+
 } // namespace math
 } // namespace pnc_planner

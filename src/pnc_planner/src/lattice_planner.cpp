@@ -1,13 +1,15 @@
-#include "pnc_planner/lattice_planner.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+
+#include "pnc_planner/lattice_planner.hpp"
 
 namespace pnc_planner {
 
 bool LatticePlanner::plan(const VehicleInfo &ego, const ReferenceLine &ref_line,
                           Trajectory &out_trajectory) {
+  ref_line_ = &ref_line;
+
   // 生成横向候选轨迹
   auto lat_trajs = generate_lateral_trajectories(ego, ref_line);
   if (lat_trajs.empty()) {
@@ -207,7 +209,7 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
       const auto &lat_traj = lat_trajs[i];
       const auto &lon_traj = lon_trajs[j];
 
-      if (!is_trajectory_vaild(lat_traj, lon_traj)) {
+      if (!is_trajectory_valid(lat_traj, lon_traj)) {
         continue;
       }
 
@@ -224,9 +226,54 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
   return {best_lat_idx, best_lon_idx};
 }
 
-bool LatticePlanner::is_trajectory_vaild(
+bool LatticePlanner::is_trajectory_valid(
     const math::QuinticPolynomial &lat_traj,
-    const math::QuinticPolynomial &lon_traj) {}
+    const math::QuinticPolynomial &lon_traj) {
+
+  double T = lon_traj.get_T();
+  double dt = 0.1;
+
+  double s0 = lon_traj.evaluate(0.0);
+
+  // clang-format off
+  for (double t = 0.0; t <= T; t += dt) {
+    // 纵向有效性判断
+    double v = lon_traj.evaluate_d(t);
+    double a = lon_traj.evaluate_dd(t);
+    double jerk = lon_traj.evaluate_ddd(t);
+
+    if (v < config_.min_v || v > config_.max_v) return false;
+    if (a < config_.min_acc || a > config_.max_acc) return false;
+    if (std::abs(jerk) > config_.max_jerk) return false;
+
+    // 横向有效性判断
+    double s = lon_traj.evaluate(t);
+    double ds = s - s0;
+
+    if(ds > lat_traj.get_T()) return false;
+    if(ds < 0.0) ds = 0.0;
+
+    double l = lat_traj.evaluate(ds);
+
+    if(std::abs(l) > config_.max_lat_offset) return false;
+
+    // 碰撞检查
+    if(!obstacles_.empty()){
+      double x = 0.0, y = 0.0, yaw_ref = 0.0;
+      ref_line_->getCartesianPoint(s, l, x, y,yaw_ref);
+
+      for(const auto &obs : obstacles_){
+        double dx = x - obs.x;
+        double dy = y - obs.y;
+        double safe_dist = (3.0 + obs.length) / 2.0;
+        if(std::sqrt(dx * dx + dy * dy) < safe_dist) return false;
+      }
+    }
+  }
+  // clang-format on
+
+  return true;
+}
 
 double LatticePlanner::calculate_trajectory_cost(
     const math::QuinticPolynomial &lat_traj,

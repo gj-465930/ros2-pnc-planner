@@ -1,0 +1,8 @@
+lattice_planner:
+  limits:
+    max_v: 35.0
+    min_v: -0.1
+    max_acc: 3.0
+    min_acc: -5.0
+    max_jerk: 4.0
+    max_lat_offset: 3.5

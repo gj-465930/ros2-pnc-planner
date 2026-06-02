@@ -9,6 +9,7 @@
  *
  */
 
+#include "pnc_planner/common.hpp"
 #include "pnc_planner/math/quintic_polynomial.hpp"
 #include "pnc_planner/planner_base.hpp"
 
@@ -17,7 +18,7 @@ namespace pnc_planner {
 // clang-format off
 class LatticePlanner : public PlannerBase {
 public:
-  LatticePlanner() = default;
+  explicit LatticePlanner(const LatticePlannerConfig &config) : config_(config), ref_line_(nullptr) {}
   ~LatticePlanner() override = default;
 
   bool plan(const VehicleInfo &ego, 
@@ -28,7 +29,15 @@ public:
     return "LatticePlanner";
   }
 
+  void setObstacles(const std::vector<Obstacle>& Obstacle){
+    obstacles_ = Obstacle;
+  }
+
 private:
+  LatticePlannerConfig config_;
+  std::vector<Obstacle> obstacles_;
+  const ReferenceLine *ref_line_;
+
   //生成横向候选轨迹
   std::vector<math::QuinticPolynomial> generate_lateral_trajectories(
     const VehicleInfo& ego,
@@ -58,7 +67,7 @@ private:
     const std::vector<math::QuinticPolynomial>& lon_trajs
   );
   // 碰撞与越界检测
-  bool is_trajectory_vaild(
+  bool is_trajectory_valid(
     const math::QuinticPolynomial& lat_traj,
     const math::QuinticPolynomial& lon_traj
   );
