@@ -38,6 +38,7 @@ public:
   ~ReferenceLine() = default;
 
   bool init(const std::vector<double> &x, const std::vector<double> &y);
+  
   WayPoint getWayPoint(double s) const;
 
   bool getFrenetPoint(double x, double y, double &s, double &l) const;

@@ -7,7 +7,9 @@ Visualizer::Visualizer(rclcpp::Node *node) : node_(node) {
   marker_pub_ = node_->create_publisher<visualization_msgs::msg::Marker>(
       "reference_line_marker", qos);
   path_pub_ =
-      node->create_publisher<nav_msgs::msg::Path>("reference_line_path", qos);
+      node_->create_publisher<nav_msgs::msg::Path>("reference_line_path", qos);
+  traj_pub_ =
+      node_->create_publisher<nav_msgs::msg::Path>("trajectory_path", 10);
 }
 
 // 传入point消息然后用mark画参考线
@@ -47,6 +49,12 @@ void Visualizer::publishReferenceLineMarker(
 void Visualizer::publishReferenceLine(const nav_msgs::msg::Path &path) {
   if (path_pub_ != nullptr) {
     path_pub_->publish(path);
+  }
+}
+
+void Visualizer::publishTrajectory(const nav_msgs::msg::Path &path) {
+  if (traj_pub_ != nullptr) {
+    traj_pub_->publish(path);
   }
 }
 

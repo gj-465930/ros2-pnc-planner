@@ -17,11 +17,10 @@ PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
   declare_parameter("lattice_planner.limits.target_speed", 15.0);
   declare_parameter("lattice_planner.limits.planning_time", 5.0);
   // weights
-  declare_parameter("lattice_planner.weights.w_lat_acc", "1.0");
-  declare_parameter("lattice_planner.weights.w_lat_jerk", "0.5");
-  declare_parameter("lattice_planner.weights.w_lon_jerk", "1.0");
-  declare_parameter("lattice_planner.weights.w_offset", "2.0");
-  declare_parameter("lattice_planner.weights.w_speed", "0.8");
+  declare_parameter("lattice_planner.weights.w_lat", 1.0);
+  declare_parameter("lattice_planner.weights.w_lon", 10.0);
+  declare_parameter("lattice_planner.weights.w_offset", 0.3);
+  declare_parameter("lattice_planner.weights.w_speed", 1.0);
 
   // 读取参数
   LatticePlannerConfig config;
@@ -34,7 +33,7 @@ PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
   config.max_lat_offset =
       get_parameter("lattice_planner.limits.max_lat_offset").as_double();
   config.target_speed =
-      get_parameter("lattice_planner.target_speed").as_double();
+      get_parameter("lattice_planner.limits.target_speed").as_double();
   config.planning_time =
       get_parameter("lattice_planner.limits.planning_time").as_double();
 
@@ -73,7 +72,7 @@ PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
   visualizer_ = std::make_shared<Visualizer>(this);
 
   global_route_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-      "/routing_path", 10, [this](nav_msgs::msg::Path::ConstSharedPtr &msg) {
+      "/routing_path", 10, [this](nav_msgs::msg::Path::ConstSharedPtr msg) {
         this->globalRouteCallback(msg);
       });
 
@@ -85,6 +84,12 @@ void PncPlannerNode::timerCallback() {
   // this->testSinPathVisual();
   this->testEgoVehicle();
   this->publishReferenceLine();
+
+  VehicleInfo ego = ego_vehicle_->getVehicleState();
+  Trajectory out_trajectory;
+  if (lattice_planner_->plan(ego, *ref_line_, out_trajectory)) {
+    this->publishTrajectory(out_trajectory);
+  }
 }
 
 void PncPlannerNode::testSinPathVisual() {
@@ -203,6 +208,33 @@ void PncPlannerNode::globalRouteCallback(
   }
 
   this->updateReferenceLine(raw_points);
+}
+
+void PncPlannerNode::publishTrajectory(const Trajectory &traj) {
+  nav_msgs::msg::Path path;
+
+  path.header.frame_id = "map";
+  path.header.stamp = this->now();
+
+  for (size_t i = 0; i < traj.size(); ++i) {
+    geometry_msgs::msg::PoseStamped pose;
+    pose.header.frame_id = "map";
+    pose.header.stamp = this->now();
+
+    pose.pose.position.x = traj[i].x;
+    pose.pose.position.y = traj[i].y;
+    pose.pose.position.z = 0.0;
+
+    tf2::Quaternion qtn;
+    qtn.setRPY(0.0, 0.0, traj[i].heading);
+    pose.pose.orientation.x = qtn.getX();
+    pose.pose.orientation.y = qtn.getY();
+    pose.pose.orientation.z = qtn.getZ();
+    pose.pose.orientation.w = qtn.getW();
+
+    path.poses.push_back(pose);
+  }
+  visualizer_->publishTrajectory(path);
 }
 
 } // namespace pnc_planner

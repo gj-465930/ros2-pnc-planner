@@ -82,10 +82,9 @@ LatticePlanner::generate_lateral_trajectories(const VehicleInfo &ego,
   ddl0 = 0.0;
 
   // 纵向探查深度
-  double curr_v = ego.v;
   double planning_time = config_.planning_time;
   double min_s = 15.0;
-  double total_s = std::max(min_s, curr_v * planning_time);
+  double total_s = std::max(min_s, config_.target_speed * planning_time * 1.2);
 
   for (const double target_l : target_lat_offset) {
     const double l1 = target_l;
@@ -134,7 +133,9 @@ LatticePlanner::generate_cruise_trajectories(const VehicleInfo &ego,
   std::vector<double> sample_v = {cruise_speed - 2.0, cruise_speed - 1.0,
                                   cruise_speed, cruise_speed + 1.0,
                                   cruise_speed + 2.0};
-  std::vector<double> sample_T = {3.0, 4.0, 5.0};
+
+  double T = config_.planning_time;
+  std::vector<double> sample_T = {T - 2.0, T - 1.0, T};
 
   lon_cruise_trajs.reserve(sample_v.size() * sample_T.size());
 
@@ -251,7 +252,6 @@ bool LatticePlanner::is_trajectory_valid(
     double s = lon_traj.evaluate(t);
     double ds = s - s0;
 
-    if(ds > lat_traj.get_T()) return false;
     if(ds < 0.0) ds = 0.0;
 
     double l = lat_traj.evaluate(ds);
@@ -309,10 +309,10 @@ double LatticePlanner::calculate_trajectory_cost(
       ds = 0.0;
     }
     double l = lat_traj.evaluate(ds);
-    double dl = lat_traj.evaluate_d(ds);
     double ddl = lat_traj.evaluate_dd(ds);
+    double dddl = lat_traj.evaluate_ddd(ds);
 
-    lat_comfort_cost += (dl * dl + ddl * ddl);
+    lat_comfort_cost += (ddl * ddl + dddl * dddl);
     lat_offset_cost += (l * l);
   }
 

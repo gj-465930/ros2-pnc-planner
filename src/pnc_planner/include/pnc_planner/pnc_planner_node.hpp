@@ -27,6 +27,7 @@ private:
   updateReferenceLine(const std::vector<geometry_msgs::msg::Point> &points);
   void publishReferenceLine();
   void globalRouteCallback(nav_msgs::msg::Path::ConstSharedPtr &msg);
+  void publishTrajectory(const Trajectory &traj);
 
   std::shared_ptr<EgoVehicle> ego_vehicle_;
   std::shared_ptr<Visualizer> visualizer_;
