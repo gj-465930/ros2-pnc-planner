@@ -21,12 +21,12 @@ public:
 
 private:
   void timerCallback();
-  void testSinPathVisual();
-  void testEgoVehicle();
+  void testSinPathVisual() const;
+  void testEgoVehicle() const;
   void
   updateReferenceLine(const std::vector<geometry_msgs::msg::Point> &points);
   void publishReferenceLine();
-  void globalRouteCallback(nav_msgs::msg::Path::ConstSharedPtr &msg);
+  void globalRouteCallback(const nav_msgs::msg::Path::ConstSharedPtr &msg);
   void publishTrajectory(const Trajectory &traj);
 
   std::shared_ptr<EgoVehicle> ego_vehicle_;

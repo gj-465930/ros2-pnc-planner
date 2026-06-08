@@ -92,7 +92,7 @@ void PncPlannerNode::timerCallback() {
   }
 }
 
-void PncPlannerNode::testSinPathVisual() {
+void PncPlannerNode::testSinPathVisual() const {
   nav_msgs::msg::Path path;
   path.header.frame_id = "map";
   path.header.stamp = this->now();
@@ -124,7 +124,7 @@ void PncPlannerNode::testSinPathVisual() {
   }
 }
 
-void PncPlannerNode::testEgoVehicle() {
+void PncPlannerNode::testEgoVehicle () const {
   if (ref_line_ && ref_line_->getTotalLength() > 0.0) {
     double curr_s = 0.0;
     double curr_l = 0.0;
@@ -192,7 +192,7 @@ void PncPlannerNode::publishReferenceLine() {
 }
 
 void PncPlannerNode::globalRouteCallback(
-    nav_msgs::msg::Path::ConstSharedPtr &msg) {
+    const nav_msgs::msg::Path::ConstSharedPtr &msg) {
   if (msg->poses.size() < 2)
     return;
 
@@ -216,17 +216,17 @@ void PncPlannerNode::publishTrajectory(const Trajectory &traj) {
   path.header.frame_id = "map";
   path.header.stamp = this->now();
 
-  for (size_t i = 0; i < traj.size(); ++i) {
+  for (const auto & i : traj) {
     geometry_msgs::msg::PoseStamped pose;
     pose.header.frame_id = "map";
     pose.header.stamp = this->now();
 
-    pose.pose.position.x = traj[i].x;
-    pose.pose.position.y = traj[i].y;
+    pose.pose.position.x = i.x;
+    pose.pose.position.y = i.y;
     pose.pose.position.z = 0.0;
 
     tf2::Quaternion qtn;
-    qtn.setRPY(0.0, 0.0, traj[i].heading);
+    qtn.setRPY(0.0, 0.0, i.heading);
     pose.pose.orientation.x = qtn.getX();
     pose.pose.orientation.y = qtn.getY();
     pose.pose.orientation.z = qtn.getZ();
