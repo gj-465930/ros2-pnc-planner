@@ -3,6 +3,8 @@
 
 .DS_Store
 
+.clangd-format
+
 # clangd
 .clangd
 

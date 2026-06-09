@@ -3,7 +3,8 @@
   "clangd.path": "/Users/guojin/robostack/ros2/.pixi/envs/default/bin/clangd",
   "clangd.arguments": [
     "--compile-commands-dir=${workspaceFolder}/build",
-    "--header-insertion=never"
+    "--header-insertion=never",
+    "--clang-tidy"
   ],
   "python.defaultInterpreterPath": "/Users/guojin/robostack/ros2/.pixi/envs/default/bin/python",
   "python-envs.defaultEnvManager": "ms-python.python:system"
