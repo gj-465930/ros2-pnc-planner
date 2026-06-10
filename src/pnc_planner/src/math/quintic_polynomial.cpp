@@ -1,7 +1,7 @@
 #include "pnc_planner/math/quintic_polynomial.hpp"
 
-namespace pnc_planner {
-namespace math {
+namespace pnc_planner::math
+{
 
 // clang-format off
 QuinticPolynomial::QuinticPolynomial(double x0, double v0, double a0,    
@@ -55,5 +55,4 @@ double QuinticPolynomial::evaluate_ddd(double s) const{
          60 * c5_ * s * s;
 }
 
-} // namespace math
-} // namespace pnc_planner
+} // namespace pnc_planner::math

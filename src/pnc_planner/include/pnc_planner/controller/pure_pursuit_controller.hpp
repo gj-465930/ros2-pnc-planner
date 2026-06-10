@@ -2,25 +2,24 @@
 
 #include "pnc_planner/controller/lateral_controller_base.hpp"
 
-namespace pnc_planner {
-namespace controller {
+namespace pnc_planner::controller
+{
 
-class PurePursuitController : public LateralControllerBase {
+class PurePursuitController : public LateralControllerBase
+{
 public:
-  PurePursuitController(const double ld_min, const double ld_ratio,
-                        const double wheelbase)
-      : ld_min_(ld_min), ld_ratio_(ld_ratio), wheelbase_(wheelbase) {}
+  PurePursuitController(const double ld_min, const double ld_ratio, const double wheelbase)
+  : ld_min_(ld_min), ld_ratio_(ld_ratio), wheelbase_(wheelbase)
+  {
+  }
 
-  double computeSteerAngle(const Trajectory &traj,
-                           const VehicleInfo &ego) override;
+  double computeSteerAngle(const Trajectory & traj, const VehicleInfo & ego) override;
 
 private:
-  TrajectoryPoint findLookaheadPoint(const Trajectory &traj,
-                                     const VehicleInfo &ego);
+  TrajectoryPoint findLookaheadPoint(const Trajectory & traj, const VehicleInfo & ego);
 
-  double ld_min_;    // 最小前瞻距离
-  double ld_ratio_;  // 速度洗漱
-  double wheelbase_; // 轴距
+  double ld_min_;     // 最小前瞻距离
+  double ld_ratio_;   // 速度系数
+  double wheelbase_;  // 轴距
 };
-} // namespace controller
-} // namespace pnc_planner
+}  // namespace pnc_planner::controller

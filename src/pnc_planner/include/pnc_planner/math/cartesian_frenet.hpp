@@ -2,18 +2,19 @@
 
 #include <functional>
 
-namespace pnc_planner {
-namespace math {
+namespace pnc_planner ::math
+{
 
 /**
  * @brief 实现笛卡尔坐标系与frenet坐标系的转换
  */
-class CartesianFrenetConverter {
+class CartesianFrenetConverter
+{
 public:
   CartesianFrenetConverter() = delete;
 
   using EvaluateCurveFunc =
-      std::function<void(double &s, double &x, double &y, double &heading)>;
+    std::function<void(double & s, double & x, double & y, double & heading)>;
 
   /**
    * @brief 笛卡尔坐标系转换frenet坐标系
@@ -25,10 +26,9 @@ public:
    * @param l [out] 算出的横向偏差
    * @return true 转换成功; false 转换失败
    */
-  static bool cartesianToFrenet(const double target_x, const double target_y,
-                                const double max_s,
-                                const EvaluateCurveFunc &eval_func, double &s,
-                                double &l);
+  static bool cartesianToFrenet(
+    const double target_x, const double target_y, const double max_s,
+    const EvaluateCurveFunc & eval_func, double & s, double & l);
 
   /**
    * @brief Frenet 坐标转笛卡尔坐标 (SL -> XY)
@@ -40,11 +40,9 @@ public:
    * @param y [out] 算出的世界坐标 Y
    * @return true 转换成功; false 越界等异常
    */
-  static bool frenetToCartesian(const double s, const double l,
-                                const double max_s,
-                                const EvaluateCurveFunc &eval_func, double &x,
-                                double &y);
+  static bool frenetToCartesian(
+    const double s, const double l, const double max_s, const EvaluateCurveFunc & eval_func,
+    double & x, double & y);
 };
 
-} // namespace math
-} // namespace pnc_planner
+}  // namespace pnc_planner::math

@@ -11,10 +11,11 @@
 
 #pragma once
 
-namespace pnc_planner {
-namespace math {
+namespace pnc_planner ::math
+{
 
-class QuinticPolynomial {
+class QuinticPolynomial
+{
 public:
   QuinticPolynomial() = default;
 
@@ -28,8 +29,7 @@ public:
    * @param[in] a1 终点状态：加速度 (2阶导)
    * @param[in] T  规划自变量跨度
    */
-  QuinticPolynomial(double x0, double v0, double a0, double x1, double v1,
-                    double a1, double T);
+  QuinticPolynomial(double x0, double v0, double a0, double x1, double v1, double a1, double T);
 
   // 计算任意里程 s 处的横向偏差 L
   double evaluate(double s) const;
@@ -53,5 +53,4 @@ private:
   double T_;
 };
 
-} // namespace math
-} // namespace pnc_planner
+}  // namespace pnc_planner::math

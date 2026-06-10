@@ -72,8 +72,9 @@ double PurePursuitController::computeSteerAngle(const Trajectory & traj, const V
     return 0.0;
   }
 
-  double delta = std::atan(2.0 * wheelbase_ * local_y / actual_ld_sq);
+  double delta = std::atan2(2.0 * wheelbase_ * local_y, actual_ld_sq);
 
+  // 安全防护
   constexpr double max_steer = 0.61;  // 约 35 度
   return std::clamp(delta, -max_steer, max_steer);
 }

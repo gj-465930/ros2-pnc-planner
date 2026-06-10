@@ -1,13 +1,13 @@
 #include "pnc_planner/math/spline1d.hpp"
+
 #include <algorithm>
 
-namespace pnc_planner {
-namespace math {
+namespace pnc_planner ::math
+{
 
-bool Spline1D::init(const std::vector<double> &s,
-                    const std::vector<double> &y) {
-  if (s.size() != y.size() || s.size() < 3)
-    return false;
+bool Spline1D::init(const std::vector<double> & s, const std::vector<double> & y)
+{
+  if (s.size() != y.size() || s.size() < 3) return false;
 
   int n = s.size();
   s_ = s;
@@ -18,15 +18,14 @@ bool Spline1D::init(const std::vector<double> &s,
   d_.resize(n - 1);
 
   // 使用Thomas 算法求解三对角矩阵
-  std::vector<double> h(n - 1); // 存放每条路径的对应的弧长
-  std::vector<double> d(n - 1); // 存放d
+  std::vector<double> h(n - 1);  // 存放每条路径的对应的弧长
+  std::vector<double> d(n - 1);  // 存放d
   for (int i = 0; i < n - 1; ++i) {
     h[i] = s[i + 1] - s[i];
     d[i] = (y[i + 1] - y[i]) / h[i];
   }
 
-  std::vector<double> lower(n, 0.0), main_diag(n, 1.0), upper(n, 0.0),
-      B(n, 0.0);
+  std::vector<double> lower(n, 0.0), main_diag(n, 1.0), upper(n, 0.0), B(n, 0.0);
   // 三对角矩阵A
   for (int i = 1; i < n - 1; ++i) {
     lower[i] = h[i - 1];
@@ -60,7 +59,8 @@ bool Spline1D::init(const std::vector<double> &s,
   return true;
 }
 
-double Spline1D::calc(double s) const {
+double Spline1D::calc(double s) const
+{
   // 先查询查询的值处于哪条曲线
   int idx = Spline1D::searchIndex(s);
 
@@ -69,7 +69,8 @@ double Spline1D::calc(double s) const {
   return a_[idx] * ds * ds * ds + b_[idx] * ds * ds + c_[idx] * ds + d_[idx];
 }
 
-double Spline1D::calcDerivative(double s) const {
+double Spline1D::calcDerivative(double s) const
+{
   int idx = Spline1D::searchIndex(s);
 
   double ds = s - s_[idx];
@@ -77,7 +78,8 @@ double Spline1D::calcDerivative(double s) const {
   return 3.0 * a_[idx] * ds * ds + 2.0 * b_[idx] * ds + c_[idx];
 }
 
-double Spline1D::calcSecondDerivative(double s) const {
+double Spline1D::calcSecondDerivative(double s) const
+{
   int idx = Spline1D::searchIndex(s);
 
   double ds = s - s_[idx];
@@ -85,9 +87,9 @@ double Spline1D::calcSecondDerivative(double s) const {
   return 6.0 * a_[idx] * ds + 2.0 * b_[idx];
 }
 
-int Spline1D::searchIndex(double s) const {
-  if (s_.empty())
-    return 0;
+int Spline1D::searchIndex(double s) const
+{
+  if (s_.empty()) return 0;
   // 边界拦截
   if (s <= s_.front()) {
     return 0;
@@ -102,5 +104,4 @@ int Spline1D::searchIndex(double s) const {
   return std::distance(s_.begin(), it) - 1;
 }
 
-} // namespace math
-} // namespace pnc_planner
+}  // namespace pnc_planner::math

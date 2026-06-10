@@ -1,11 +1,15 @@
-#include <cmath>
-
-#include "nav_msgs/msg/path.hpp"
 #include "pnc_planner/pnc_planner_node.hpp"
+
 #include "tf2/LinearMath/Quaternion.hpp"
 
-namespace pnc_planner {
-PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
+#include "nav_msgs/msg/path.hpp"
+
+#include <cmath>
+
+namespace pnc_planner
+{
+PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
+{
   // 声明参数
   // limits
   declare_parameter("lattice_planner.limits.max_v", 35.0);
@@ -28,19 +32,14 @@ PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
   config.min_v = get_parameter("lattice_planner.limits.min_v").as_double();
   config.max_acc = get_parameter("lattice_planner.limits.max_acc").as_double();
   config.min_acc = get_parameter("lattice_planner.limits.min_acc").as_double();
-  config.max_jerk =
-      get_parameter("lattice_planner.limits.max_jerk").as_double();
-  config.max_lat_offset =
-      get_parameter("lattice_planner.limits.max_lat_offset").as_double();
-  config.target_speed =
-      get_parameter("lattice_planner.limits.target_speed").as_double();
-  config.planning_time =
-      get_parameter("lattice_planner.limits.planning_time").as_double();
+  config.max_jerk = get_parameter("lattice_planner.limits.max_jerk").as_double();
+  config.max_lat_offset = get_parameter("lattice_planner.limits.max_lat_offset").as_double();
+  config.target_speed = get_parameter("lattice_planner.limits.target_speed").as_double();
+  config.planning_time = get_parameter("lattice_planner.limits.planning_time").as_double();
 
   config.w_lat = get_parameter("lattice_planner.weights.w_lat").as_double();
   config.w_lon = get_parameter("lattice_planner.weights.w_lon").as_double();
-  config.w_offset =
-      get_parameter("lattice_planner.weights.w_offset").as_double();
+  config.w_offset = get_parameter("lattice_planner.weights.w_offset").as_double();
   config.w_speed = get_parameter("lattice_planner.weights.w_speed").as_double();
 
   lattice_planner_ = std::make_shared<LatticePlanner>(config);
@@ -62,7 +61,7 @@ PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
     for (int i = 0; i < 5; i++) {
       geometry_msgs::msg::Point p;
       p.x = i * 5.0;
-      p.y = i * i * 1.0; // 抛物线
+      p.y = i * i * 1.0;  // 抛物线
       p.z = 0.0;
       test_points.push_back(p);
     }
@@ -72,15 +71,15 @@ PncPlannerNode::PncPlannerNode(const std::string &node_name) : Node(node_name) {
   visualizer_ = std::make_shared<Visualizer>(this);
 
   global_route_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-      "/routing_path", 10, [this](nav_msgs::msg::Path::ConstSharedPtr msg) {
-        this->globalRouteCallback(msg);
-      });
+    "/routing_path", 10,
+    [this](nav_msgs::msg::Path::ConstSharedPtr msg) { this->globalRouteCallback(msg); });
 
-  timer_ = this->create_wall_timer(std::chrono::milliseconds(100),
-                                   [this]() { this->timerCallback(); });
+  timer_ =
+    this->create_wall_timer(std::chrono::milliseconds(100), [this]() { this->timerCallback(); });
 }
 
-void PncPlannerNode::timerCallback() {
+void PncPlannerNode::timerCallback()
+{
   // this->testSinPathVisual();
   this->testEgoVehicle();
   this->publishReferenceLine();
@@ -92,7 +91,8 @@ void PncPlannerNode::timerCallback() {
   }
 }
 
-void PncPlannerNode::testSinPathVisual() const {
+void PncPlannerNode::testSinPathVisual() const
+{
   nav_msgs::msg::Path path;
   path.header.frame_id = "map";
   path.header.stamp = this->now();
@@ -124,7 +124,8 @@ void PncPlannerNode::testSinPathVisual() const {
   }
 }
 
-void PncPlannerNode::testEgoVehicle () const {
+void PncPlannerNode::testEgoVehicle() const
+{
   if (ref_line_ && ref_line_->getTotalLength() > 0.0) {
     double curr_s = 0.0;
     double curr_l = 0.0;
@@ -132,16 +133,14 @@ void PncPlannerNode::testEgoVehicle () const {
 
     ego_vehicle_->updateState(dt);
     auto egoState = ego_vehicle_->getVehicleState();
-    if (ref_line_->getFrenetPoint(egoState.pose.x, egoState.pose.y, curr_s,
-                                  curr_l)) {
-      RCLCPP_INFO(this->get_logger(), "[frenet]: s = %.2f, l = %.2f", curr_s,
-                  curr_l);
+    if (ref_line_->getFrenetPoint(egoState.pose.x, egoState.pose.y, curr_s, curr_l)) {
+      RCLCPP_INFO(this->get_logger(), "[frenet]: s = %.2f, l = %.2f", curr_s, curr_l);
     }
   }
 }
 
-void PncPlannerNode::updateReferenceLine(
-    const std::vector<geometry_msgs::msg::Point> &points) {
+void PncPlannerNode::updateReferenceLine(const std::vector<geometry_msgs::msg::Point> & points)
+{
   std::vector<double> x, y;
   for (auto point : points) {
     x.push_back(point.x);
@@ -151,13 +150,12 @@ void PncPlannerNode::updateReferenceLine(
   if (!ref_line_->init(x, y)) {
     RCLCPP_WARN(this->get_logger(), "参考线初始化失败!");
     return;
-  } else {
-    RCLCPP_INFO(this->get_logger(), "初始化参考线成功，总长度为 %.2f",
-                ref_line_->getTotalLength());
   }
+  RCLCPP_INFO(this->get_logger(), "初始化参考线成功，总长度为 %.2f", ref_line_->getTotalLength());
 }
 
-void PncPlannerNode::publishReferenceLine() {
+void PncPlannerNode::publishReferenceLine()
+{
   if (ref_line_ == nullptr || ref_line_->getTotalLength() <= 0.0) {
     return;
   }
@@ -191,14 +189,13 @@ void PncPlannerNode::publishReferenceLine() {
   visualizer_->publishReferenceLine(path);
 }
 
-void PncPlannerNode::globalRouteCallback(
-    const nav_msgs::msg::Path::ConstSharedPtr &msg) {
-  if (msg->poses.size() < 2)
-    return;
+void PncPlannerNode::globalRouteCallback(const nav_msgs::msg::Path::ConstSharedPtr & msg)
+{
+  if (msg->poses.size() < 2) return;
 
   std::vector<geometry_msgs::msg::Point> raw_points;
 
-  for (const auto &pose_stamp : msg->poses) {
+  for (const auto & pose_stamp : msg->poses) {
     geometry_msgs::msg::Point p;
     p.x = pose_stamp.pose.position.x;
     p.y = pose_stamp.pose.position.y;
@@ -210,7 +207,8 @@ void PncPlannerNode::globalRouteCallback(
   this->updateReferenceLine(raw_points);
 }
 
-void PncPlannerNode::publishTrajectory(const Trajectory &traj) {
+void PncPlannerNode::publishTrajectory(const Trajectory & traj)
+{
   nav_msgs::msg::Path path;
 
   path.header.frame_id = "map";
@@ -237,4 +235,4 @@ void PncPlannerNode::publishTrajectory(const Trajectory &traj) {
   visualizer_->publishTrajectory(path);
 }
 
-} // namespace pnc_planner
+}  // namespace pnc_planner

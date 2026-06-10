@@ -5,18 +5,18 @@
 #include <limits>
 #include <vector>
 
-namespace pnc_planner {
-namespace math {
+namespace pnc_planner ::math
+{
 
 bool CartesianFrenetConverter::cartesianToFrenet(
-    const double target_x, const double target_y, const double max_s,
-    const EvaluateCurveFunc &eval_func, double &s, double &l) {
-  if (max_s < 0.0 || !eval_func)
-    return false;
+  const double target_x, const double target_y, const double max_s,
+  const EvaluateCurveFunc & eval_func, double & s, double & l)
+{
+  if (max_s < 0.0 || !eval_func) return false;
 
   // 找到垂足并且计算最目标点与垂足的距离
 
-  double best_s = 0.0; // 当前找到的最近点的s值
+  double best_s = 0.0;  // 当前找到的最近点的s值
   double min_dist_sq = std::numeric_limits<double>::max();
   // 步长
   std::vector<double> steps = {1.0, 0.1, 0.01};
@@ -68,8 +68,9 @@ bool CartesianFrenetConverter::cartesianToFrenet(
 }
 
 bool CartesianFrenetConverter::frenetToCartesian(
-    const double s, const double l, const double max_s,
-    const EvaluateCurveFunc &eval_func, double &x, double &y) {
+  const double s, const double l, const double max_s, const EvaluateCurveFunc & eval_func,
+  double & x, double & y)
+{
   if (s < 0 || s > max_s || !eval_func) {
     return false;
   }
@@ -92,5 +93,4 @@ bool CartesianFrenetConverter::frenetToCartesian(
   return true;
 }
 
-} // namespace math
-} // namespace pnc_planner
+}  // namespace pnc_planner::math

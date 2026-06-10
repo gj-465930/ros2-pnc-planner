@@ -2,15 +2,16 @@
 
 #include <vector>
 
-namespace pnc_planner {
-namespace math {
+namespace pnc_planner ::math
+{
 
-class Spline1D {
+class Spline1D
+{
 public:
   Spline1D() = default;
   ~Spline1D() = default;
 
-  bool init(const std::vector<double> &s, const std::vector<double> &y);
+  bool init(const std::vector<double> & s, const std::vector<double> & y);
 
   // 输出差值后的y
   double calc(double s) const;
@@ -35,5 +36,4 @@ private:
   std::vector<double> d_;
 };
 
-} // namespace math
-} // namespace pnc_planner
+}  // namespace pnc_planner::math
