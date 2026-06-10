@@ -1,13 +1,15 @@
+#include "pnc_planner/lattice_planner.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 
-#include "pnc_planner/lattice_planner.hpp"
+namespace pnc_planner
+{
 
-namespace pnc_planner {
-
-bool LatticePlanner::plan(const VehicleInfo &ego, const ReferenceLine &ref_line,
-                          Trajectory &out_trajectory) {
+bool LatticePlanner::plan(
+  const VehicleInfo & ego, const ReferenceLine & ref_line, Trajectory & out_trajectory)
+{
   ref_line_ = &ref_line;
 
   // 生成横向候选轨迹
@@ -37,19 +39,18 @@ bool LatticePlanner::plan(const VehicleInfo &ego, const ReferenceLine &ref_line,
   }
 
   // 1D->2D
-  const auto &best_lat = lat_trajs[best_lat_idx];
-  const auto &best_lon = lon_trajs[best_lon_idx];
+  const auto & best_lat = lat_trajs[best_lat_idx];
+  const auto & best_lon = lon_trajs[best_lon_idx];
 
   out_trajectory.clear();
-  auto success =
-      combine_and_transform_to_2d(best_lat, best_lon, ref_line, out_trajectory);
+  auto success = combine_and_transform_to_2d(best_lat, best_lon, ref_line, out_trajectory);
 
   return success;
 }
 
-std::vector<math::QuinticPolynomial>
-LatticePlanner::generate_lateral_trajectories(const VehicleInfo &ego,
-                                              const ReferenceLine &ref_line) {
+std::vector<math::QuinticPolynomial> LatticePlanner::generate_lateral_trajectories(
+  const VehicleInfo & ego, const ReferenceLine & ref_line)
+{
   std::vector<math::QuinticPolynomial> lat_trajs;
 
   const std::vector<double> target_lat_offset = {3.5, 0, -3.5};
@@ -61,8 +62,7 @@ LatticePlanner::generate_lateral_trajectories(const VehicleInfo &ego,
   bool is_trasform = ref_line.getFrenetPoint(ego.pose.x, ego.pose.y, s0, l0);
 
   if (!is_trasform) {
-    std::cerr << "[latticePlanner] Error:cartesian to frenet failed!"
-              << std::endl;
+    std::cerr << "[latticePlanner] Error:cartesian to frenet failed!" << std::endl;
     return lat_trajs;
   }
 
@@ -82,9 +82,11 @@ LatticePlanner::generate_lateral_trajectories(const VehicleInfo &ego,
   ddl0 = 0.0;
 
   // 纵向探查深度
+  double curr_v = ego.v;
   double planning_time = config_.planning_time;
   double min_s = 15.0;
-  double total_s = std::max(min_s, config_.target_speed * planning_time * 1.2);
+  double ref_len = ref_line_->getTotalLength() - s0;
+  double total_s = std::max(min_s, std::min(curr_v * planning_time, ref_len));
 
   for (const double target_l : target_lat_offset) {
     const double l1 = target_l;
@@ -97,24 +99,24 @@ LatticePlanner::generate_lateral_trajectories(const VehicleInfo &ego,
   return lat_trajs;
 }
 
-std::vector<math::QuinticPolynomial>
-LatticePlanner::generate_longitudinal_trajectories(
-    const VehicleInfo &ego, const ReferenceLine &ref_line) {
+std::vector<math::QuinticPolynomial> LatticePlanner::generate_longitudinal_trajectories(
+  const VehicleInfo & ego, const ReferenceLine & ref_line)
+{
   switch (ego.current_state) {
-  case pnc_planner::VehicleState::CRUISING:
-    return generate_cruise_trajectories(ego, ref_line);
+    case pnc_planner::VehicleState::CRUISING:
+      return generate_cruise_trajectories(ego, ref_line);
 
-  case pnc_planner::VehicleState::EMERGENCY:
-  case pnc_planner::VehicleState::INIT:
-  case pnc_planner::VehicleState::STANDBY:
-  default:
-    return generate_emergency_trajectories(ego, ref_line);
+    case pnc_planner::VehicleState::EMERGENCY:
+    case pnc_planner::VehicleState::INIT:
+    case pnc_planner::VehicleState::STANDBY:
+    default:
+      return generate_emergency_trajectories(ego, ref_line);
   }
 }
 
-std::vector<math::QuinticPolynomial>
-LatticePlanner::generate_cruise_trajectories(const VehicleInfo &ego,
-                                             const ReferenceLine &ref_line) {
+std::vector<math::QuinticPolynomial> LatticePlanner::generate_cruise_trajectories(
+  const VehicleInfo & ego, const ReferenceLine & ref_line)
+{
   std::vector<math::QuinticPolynomial> lon_cruise_trajs;
 
   double s0, l0;
@@ -130,9 +132,8 @@ LatticePlanner::generate_cruise_trajectories(const VehicleInfo &ego,
 
   double cruise_speed = config_.target_speed;
 
-  std::vector<double> sample_v = {cruise_speed - 2.0, cruise_speed - 1.0,
-                                  cruise_speed, cruise_speed + 1.0,
-                                  cruise_speed + 2.0};
+  std::vector<double> sample_v = {
+    cruise_speed - 2.0, cruise_speed - 1.0, cruise_speed, cruise_speed + 1.0, cruise_speed + 2.0};
 
   double T = config_.planning_time;
   std::vector<double> sample_T = {T - 2.0, T - 1.0, T};
@@ -144,15 +145,16 @@ LatticePlanner::generate_cruise_trajectories(const VehicleInfo &ego,
       double s1 = s0 + ((v0 + v1) / 2.0) * T;
       double a1 = 0.0;
 
+      if (s1 > ref_line_->getTotalLength()) continue;
       lon_cruise_trajs.emplace_back(s0, v0, a0, s1, v1, a1, T);
     }
   }
   return lon_cruise_trajs;
 }
 
-std::vector<math::QuinticPolynomial>
-LatticePlanner::generate_emergency_trajectories(const VehicleInfo &ego,
-                                                const ReferenceLine &ref_line) {
+std::vector<math::QuinticPolynomial> LatticePlanner::generate_emergency_trajectories(
+  const VehicleInfo & ego, const ReferenceLine & ref_line)
+{
   std::vector<math::QuinticPolynomial> lon_emergency_trajs;
 
   double s0 = 0.0;
@@ -183,13 +185,13 @@ LatticePlanner::generate_emergency_trajectories(const VehicleInfo &ego,
     double T = (0 - v0) / decel;
 
     // 设置下限
-    if (T < 0.5)
-      T = 0.5;
+    if (T < 0.5) T = 0.5;
 
     double v1 = 0.0;
     double a1 = 0.0;
 
     double s1 = s0 + (v0 / 2) * T;
+    if (s1 > ref_line_->getTotalLength()) continue;
 
     lon_emergency_trajs.emplace_back(s0, v0, a0, s1, v1, a1, T);
   }
@@ -197,9 +199,9 @@ LatticePlanner::generate_emergency_trajectories(const VehicleInfo &ego,
 }
 
 std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
-    const std::vector<math::QuinticPolynomial> &lat_trajs,
-    const std::vector<math::QuinticPolynomial> &lon_trajs) {
-
+  const std::vector<math::QuinticPolynomial> & lat_trajs,
+  const std::vector<math::QuinticPolynomial> & lon_trajs)
+{
   // 初始化最小代价
   double min_cost = std::numeric_limits<double>::max();
   int best_lat_idx = -1;
@@ -207,9 +209,8 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
 
   for (size_t i = 0; i < lat_trajs.size(); ++i) {
     for (size_t j = 0; j < lon_trajs.size(); ++j) {
-
-      const auto &lat_traj = lat_trajs[i];
-      const auto &lon_traj = lon_trajs[j];
+      const auto & lat_traj = lat_trajs[i];
+      const auto & lon_traj = lon_trajs[j];
 
       if (!is_trajectory_valid(lat_traj, lon_traj)) {
         continue;
@@ -229,15 +230,13 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
 }
 
 bool LatticePlanner::is_trajectory_valid(
-    const math::QuinticPolynomial &lat_traj,
-    const math::QuinticPolynomial &lon_traj) {
-
+  const math::QuinticPolynomial & lat_traj, const math::QuinticPolynomial & lon_traj)
+{
   double T = lon_traj.get_T();
   double dt = 0.1;
 
   double s0 = lon_traj.evaluate(0.0);
 
-  // clang-format off
   for (double t = 0.0; t <= T; t += dt) {
     // 纵向有效性判断
     double v = lon_traj.evaluate_d(t);
@@ -252,34 +251,32 @@ bool LatticePlanner::is_trajectory_valid(
     double s = lon_traj.evaluate(t);
     double ds = s - s0;
 
-    if(ds < 0.0) ds = 0.0;
+    if (ds < 0.0) ds = 0.0;
 
     double l = lat_traj.evaluate(ds);
 
-    if(std::abs(l) > config_.max_lat_offset) return false;
+    if (std::abs(l) > config_.max_lat_offset) return false;
 
     // 碰撞检查
-    if(!obstacles_.empty()){
+    if (!obstacles_.empty()) {
       double x = 0.0, y = 0.0, yaw_ref = 0.0;
-      ref_line_->getCartesianPoint(s, l, x, y,yaw_ref);
+      ref_line_->getCartesianPoint(s, l, x, y, yaw_ref);
 
-      for(const auto &obs : obstacles_){
+      for (const auto & obs : obstacles_) {
         double dx = x - obs.x;
         double dy = y - obs.y;
         double safe_dist = (3.0 + obs.length) / 2.0;
-        if(std::sqrt(dx * dx + dy * dy) < safe_dist) return false;
+        if (std::sqrt(dx * dx + dy * dy) < safe_dist) return false;
       }
     }
   }
-  // clang-format on
 
   return true;
 }
 
 double LatticePlanner::calculate_trajectory_cost(
-    const math::QuinticPolynomial &lat_traj,
-    const math::QuinticPolynomial &lon_traj) {
-
+  const math::QuinticPolynomial & lat_traj, const math::QuinticPolynomial & lon_traj)
+{
   double total_cost = 0.0;
 
   double T = lon_traj.get_T();
@@ -316,18 +313,16 @@ double LatticePlanner::calculate_trajectory_cost(
     lat_offset_cost += (l * l);
   }
 
-  total_cost += config_.w_lat * lat_comfort_cost +
-                config_.w_lon * lon_comfort_cost +
+  total_cost += config_.w_lat * lat_comfort_cost + config_.w_lon * lon_comfort_cost +
                 config_.w_offset * lat_offset_cost;
 
   return total_cost;
 }
 
 bool LatticePlanner::combine_and_transform_to_2d(
-    const math::QuinticPolynomial &best_lat,
-    const math::QuinticPolynomial &best_lon, const ReferenceLine &ref_line,
-    Trajectory &out_trajectory) {
-
+  const math::QuinticPolynomial & best_lat, const math::QuinticPolynomial & best_lon,
+  const ReferenceLine & ref_line, Trajectory & out_trajectory)
+{
   out_trajectory.clear();
 
   double T = best_lon.get_T();
@@ -343,8 +338,7 @@ bool LatticePlanner::combine_and_transform_to_2d(
 
     // 获取横向状态
     double ds = s - s0;
-    if (ds < 0)
-      ds = 0;
+    if (ds < 0) ds = 0;
 
     double l = best_lat.evaluate(ds);
     double dl = best_lat.evaluate_d(ds);
@@ -356,8 +350,7 @@ bool LatticePlanner::combine_and_transform_to_2d(
     bool is_success = ref_line.getCartesianPoint(s, l, x, y, yaw_ref);
 
     if (!is_success) {
-      std::cerr << "[LatticePlanner]投影失败！坐标断裂位于 s = " << s
-                << std::endl;
+      std::cerr << "[LatticePlanner]投影失败！坐标断裂位于 s = " << s << std::endl;
       out_trajectory.clear();
       return false;
     }
@@ -380,4 +373,4 @@ bool LatticePlanner::combine_and_transform_to_2d(
   return true;
 }
 
-} // namespace pnc_planner
+}  // namespace pnc_planner

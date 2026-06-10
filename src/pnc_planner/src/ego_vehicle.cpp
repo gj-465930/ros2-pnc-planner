@@ -1,12 +1,16 @@
 #include "pnc_planner/ego_vehicle.hpp"
-#include "geometry_msgs/msg/transform_stamped.hpp"
+
 #include "tf2/LinearMath/Quaternion.hpp"
+
+#include "geometry_msgs/msg/transform_stamped.hpp"
 
 #include <cmath>
 
-namespace pnc_planner {
+namespace pnc_planner
+{
 
-EgoVehicle::EgoVehicle(rclcpp::Node *node) : node_(node) {
+EgoVehicle::EgoVehicle(rclcpp::Node * node) : node_(node)
+{
   broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node_);
 
   vehicle_info_.pose.x = 0.0;
@@ -19,7 +23,8 @@ EgoVehicle::EgoVehicle(rclcpp::Node *node) : node_(node) {
   vehicle_info_.current_state = VehicleState::INIT;
 }
 
-void EgoVehicle::updateState(double dt) {
+void EgoVehicle::updateState(double dt)
+{
   double v0 = vehicle_info_.v;
   double yaw0 = vehicle_info_.pose.yaw;
 
@@ -43,8 +48,8 @@ void EgoVehicle::updateState(double dt) {
     vehicle_info_.current_state = VehicleState::CRUISING;
   }
 
-  vehicle_info_.pose.x = delta_s * std::cos(yaw0);
-  vehicle_info_.pose.y = delta_s * std::sin(yaw0);
+  vehicle_info_.pose.x += delta_s * std::cos(yaw0);
+  vehicle_info_.pose.y += delta_s * std::sin(yaw0);
   vehicle_info_.pose.yaw += vehicle_info_.omega * dt;
 
   tf2::Quaternion qtn;
@@ -69,18 +74,23 @@ void EgoVehicle::updateState(double dt) {
   broadcaster_->sendTransform(transform);
 }
 
-void EgoVehicle::setPose(double x, double y, double yaw) {
+void EgoVehicle::setPose(double x, double y, double yaw)
+{
   vehicle_info_.pose.x = x;
   vehicle_info_.pose.y = y;
   vehicle_info_.pose.yaw = yaw;
 }
 
-void EgoVehicle::setCommand(double v, double a, double omega) {
+void EgoVehicle::setCommand(double v, double a, double omega)
+{
   vehicle_info_.v = v;
   vehicle_info_.a = a;
   vehicle_info_.omega = omega;
 }
 
-VehicleInfo EgoVehicle::getVehicleState() { return vehicle_info_; }
+VehicleInfo EgoVehicle::getVehicleState()
+{
+  return vehicle_info_;
+}
 
-} // namespace pnc_planner
+}  // namespace pnc_planner

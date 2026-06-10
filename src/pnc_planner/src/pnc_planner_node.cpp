@@ -47,6 +47,9 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 
   // 初始化自车
   ego_vehicle_ = std::make_shared<EgoVehicle>(this);
+  ego_vehicle_->setPose(0.0, 0.0, 0.0);
+  ego_vehicle_->setCommand(5.0, 0.0, 0.0);
+  ego_vehicle_->updateState(0.1);
 
   // 初始化参考线对象
   ref_line_ = std::make_shared<ReferenceLine>();
