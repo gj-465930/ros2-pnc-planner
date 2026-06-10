@@ -11,7 +11,7 @@ public:
   LateralControllerBase() = default;
   virtual ~LateralControllerBase() = default;
 
-  virtual double computeSteerAngle(const Trajectory & traj, const VehicleInfo & ego) = 0;
+  virtual double computeYawRate(const Trajectory & traj, const VehicleInfo & ego) = 0;
 };
 
 }  // namespace pnc_planner::controller

@@ -13,7 +13,7 @@ public:
   {
   }
 
-  double computeSteerAngle(const Trajectory & traj, const VehicleInfo & ego) override;
+  double computeYawRate(const Trajectory & traj, const VehicleInfo & ego) override;
 
 private:
   TrajectoryPoint findLookaheadPoint(const Trajectory & traj, const VehicleInfo & ego);

@@ -1,40 +1,43 @@
 #pragma once
 
-#include <memory>
-#include <string>
-
-#include "nav_msgs/msg/path.hpp"
-#include "rclcpp/rclcpp.hpp"
-
+#include "pnc_planner/controller/pure_pursuit_controller.hpp"
 #include "pnc_planner/ego_vehicle.hpp"
 #include "pnc_planner/lattice_planner.hpp"
 #include "pnc_planner/reference_line.hpp"
 #include "pnc_planner/visualizer.hpp"
+#include "rclcpp/rclcpp.hpp"
 
-namespace pnc_planner {
+#include "nav_msgs/msg/path.hpp"
 
-class PncPlannerNode : public rclcpp::Node {
+#include <memory>
+#include <string>
+
+namespace pnc_planner
+{
+
+class PncPlannerNode : public rclcpp::Node
+{
 public:
-  explicit PncPlannerNode(const std::string &node_name = "pnc_planner_node");
+  explicit PncPlannerNode(const std::string & node_name = "pnc_planner_node");
 
   ~PncPlannerNode() override = default;
 
 private:
   void timerCallback();
-  void testSinPathVisual() const;
-  void testEgoVehicle() const;
-  void
-  updateReferenceLine(const std::vector<geometry_msgs::msg::Point> &points);
+  void updateReferenceLine(const std::vector<geometry_msgs::msg::Point> & points);
   void publishReferenceLine();
-  void globalRouteCallback(const nav_msgs::msg::Path::ConstSharedPtr &msg);
-  void publishTrajectory(const Trajectory &traj);
+  void globalRouteCallback(const nav_msgs::msg::Path::ConstSharedPtr & msg);
+  void publishTrajectory(const Trajectory & traj);
+  void trackTrajectory(const double dt);
 
+  Trajectory planned_traj_;
   std::shared_ptr<EgoVehicle> ego_vehicle_;
   std::shared_ptr<Visualizer> visualizer_;
   std::shared_ptr<ReferenceLine> ref_line_;
   std::shared_ptr<LatticePlanner> lattice_planner_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr global_route_sub_;
+  std::unique_ptr<controller::LateralControllerBase> lateral_ctrl_;
 };
 
-} // namespace pnc_planner
+}  // namespace pnc_planner

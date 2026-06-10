@@ -53,7 +53,7 @@ TrajectoryPoint PurePursuitController::findLookaheadPoint(
   return traj.back();
 }
 
-double PurePursuitController::computeSteerAngle(const Trajectory & traj, const VehicleInfo & ego)
+double PurePursuitController::computeYawRate(const Trajectory & traj, const VehicleInfo & ego)
 {
   if (traj.empty()) return 0.0;
 
@@ -76,6 +76,9 @@ double PurePursuitController::computeSteerAngle(const Trajectory & traj, const V
 
   // 安全防护
   constexpr double max_steer = 0.61;  // 约 35 度
-  return std::clamp(delta, -max_steer, max_steer);
+  delta = std::clamp(delta, -max_steer, max_steer);
+
+  double omega = ego.v / wheelbase_ * std::tan(delta);
+  return omega;
 }
 }  // namespace pnc_planner::controller

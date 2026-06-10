@@ -1,5 +1,6 @@
 #include "pnc_planner/pnc_planner_node.hpp"
 
+#include "pnc_planner/controller/pure_pursuit_controller.hpp"
 #include "tf2/LinearMath/Quaternion.hpp"
 
 #include "nav_msgs/msg/path.hpp"
@@ -46,8 +47,7 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 
   // 初始化自车
   ego_vehicle_ = std::make_shared<EgoVehicle>(this);
-  ego_vehicle_->setCommand(0.2, 0.2, 0.0);
-  ego_vehicle_->setPose(0.0, 0.0, 0.0);
+
   // 初始化参考线对象
   ref_line_ = std::make_shared<ReferenceLine>();
 
@@ -68,6 +68,9 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
     this->updateReferenceLine(test_points);
   }
 
+  // 初始化控制器
+  lateral_ctrl_ = std::make_unique<controller::PurePursuitController>(3.0, 0.8, 2.8);
+
   visualizer_ = std::make_shared<Visualizer>(this);
 
   global_route_sub_ = this->create_subscription<nav_msgs::msg::Path>(
@@ -80,62 +83,23 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 
 void PncPlannerNode::timerCallback()
 {
-  // this->testSinPathVisual();
-  this->testEgoVehicle();
+  double dt = 0.1;
+
+  // 可视化参考线
   this->publishReferenceLine();
 
+  if (ref_line_ == nullptr || ref_line_->getTotalLength() <= 0.0) return;
   VehicleInfo ego = ego_vehicle_->getVehicleState();
-  Trajectory out_trajectory;
-  if (lattice_planner_->plan(ego, *ref_line_, out_trajectory)) {
-    this->publishTrajectory(out_trajectory);
-  }
-}
 
-void PncPlannerNode::testSinPathVisual() const
-{
-  nav_msgs::msg::Path path;
-  path.header.frame_id = "map";
-  path.header.stamp = this->now();
-
-  for (double x = 0.0; x <= 10.0; x += 0.1) {
-    geometry_msgs::msg::PoseStamped pose;
-    pose.header.frame_id = "map";
-    pose.header.stamp = this->now();
-
-    pose.pose.position.x = x;
-    pose.pose.position.y = std::sin(x);
-    pose.pose.position.z = 0.0;
-
-    double yaw = std::atan2(std::cos(x), 1.0);
-
-    tf2::Quaternion qtn;
-    qtn.setRPY(0.0, 0.0, yaw);
-
-    pose.pose.orientation.x = qtn.getX();
-    pose.pose.orientation.y = qtn.getY();
-    pose.pose.orientation.z = qtn.getZ();
-    pose.pose.orientation.w = qtn.getW();
-
-    path.poses.push_back(pose);
+  // 规划
+  if (lattice_planner_->plan(ego, *ref_line_, planned_traj_)) {
+    // 可视化规划路径
+    publishTrajectory(planned_traj_);
   }
 
-  if (visualizer_ != nullptr) {
-    visualizer_->publishReferenceLine(path);
-  }
-}
-
-void PncPlannerNode::testEgoVehicle() const
-{
-  if (ref_line_ && ref_line_->getTotalLength() > 0.0) {
-    double curr_s = 0.0;
-    double curr_l = 0.0;
-    double dt = 0.1;
-
-    ego_vehicle_->updateState(dt);
-    auto egoState = ego_vehicle_->getVehicleState();
-    if (ref_line_->getFrenetPoint(egoState.pose.x, egoState.pose.y, curr_s, curr_l)) {
-      RCLCPP_INFO(this->get_logger(), "[frenet]: s = %.2f, l = %.2f", curr_s, curr_l);
-    }
+  // 跟踪
+  if (!planned_traj_.empty()) {
+    trackTrajectory(dt);
   }
 }
 
@@ -233,6 +197,23 @@ void PncPlannerNode::publishTrajectory(const Trajectory & traj)
     path.poses.push_back(pose);
   }
   visualizer_->publishTrajectory(path);
+}
+
+void PncPlannerNode::trackTrajectory(const double dt)
+{
+  VehicleInfo ego = ego_vehicle_->getVehicleState();
+
+  // 横向控制
+  double omega = lateral_ctrl_->computeYawRate(planned_traj_, ego);
+
+  // 纵向控制
+  double target_v = planned_traj_.back().v;
+  double a = 2.0 * (target_v - ego.v);
+  if (a > 3.0) a = 3.0;
+  if (a < -5.0) a = -5.0;
+
+  ego_vehicle_->setCommand(target_v, a, omega);
+  ego_vehicle_->updateState(dt);
 }
 
 }  // namespace pnc_planner
