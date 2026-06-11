@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pnc_planner/controller/longitudinal_controller_base.hpp"
 #include "pnc_planner/controller/pure_pursuit_controller.hpp"
 #include "pnc_planner/ego_vehicle.hpp"
 #include "pnc_planner/lattice_planner.hpp"
@@ -38,6 +39,7 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr global_route_sub_;
   std::unique_ptr<controller::LateralControllerBase> lateral_ctrl_;
+  std::unique_ptr<controller::LongitudinalControllerBase> longitudinal_controller_;
 };
 
 }  // namespace pnc_planner

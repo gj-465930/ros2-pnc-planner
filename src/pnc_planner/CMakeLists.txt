@@ -25,6 +25,7 @@ add_executable(pnc_planner
   src/pnc_planner_node.cpp
   src/lattice_planner.cpp
   src/controller/pure_pursuit_controller.cpp
+  src/controller/pid_controller.cpp
 )
 target_include_directories(pnc_planner PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

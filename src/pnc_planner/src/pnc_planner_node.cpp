@@ -1,5 +1,6 @@
 #include "pnc_planner/pnc_planner_node.hpp"
 
+#include "pnc_planner/controller/pid_controller.hpp"
 #include "pnc_planner/controller/pure_pursuit_controller.hpp"
 #include "tf2/LinearMath/Quaternion.hpp"
 
@@ -48,7 +49,8 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   // 初始化自车
   ego_vehicle_ = std::make_shared<EgoVehicle>(this);
   ego_vehicle_->setPose(0.0, 0.0, 0.0);
-  ego_vehicle_->setCommand(5.0, 0.0, 0.0);
+  ego_vehicle_->setVelocity(5.0);
+  ego_vehicle_->setCommand(0.0, 0.0);
   ego_vehicle_->updateState(0.1);
 
   // 初始化参考线对象
@@ -73,6 +75,8 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 
   // 初始化控制器
   lateral_ctrl_ = std::make_unique<controller::PurePursuitController>(3.0, 0.8, 2.8);
+  longitudinal_controller_ = std::make_unique<controller::PidController>(
+    2.0, 0.1, 0.05, 0.1, 3.0, config.max_acc, config.min_acc);
 
   visualizer_ = std::make_shared<Visualizer>(this);
 
@@ -210,12 +214,9 @@ void PncPlannerNode::trackTrajectory(const double dt)
   double omega = lateral_ctrl_->computeYawRate(planned_traj_, ego);
 
   // 纵向控制
-  double target_v = planned_traj_.back().v;
-  double a = 2.0 * (target_v - ego.v);
-  if (a > 3.0) a = 3.0;
-  if (a < -5.0) a = -5.0;
+  double a = longitudinal_controller_->computeAccel(planned_traj_, ego);
 
-  ego_vehicle_->setCommand(target_v, a, omega);
+  ego_vehicle_->setCommand(a, omega);
   ego_vehicle_->updateState(dt);
 }
 

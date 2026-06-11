@@ -81,9 +81,13 @@ void EgoVehicle::setPose(double x, double y, double yaw)
   vehicle_info_.pose.yaw = yaw;
 }
 
-void EgoVehicle::setCommand(double v, double a, double omega)
+void EgoVehicle::setVelocity(double v)
 {
   vehicle_info_.v = v;
+}
+
+void EgoVehicle::setCommand(double a, double omega)
+{
   vehicle_info_.a = a;
   vehicle_info_.omega = omega;
 }
