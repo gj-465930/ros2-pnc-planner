@@ -64,8 +64,29 @@ target_link_libraries(pnc_planner
 
 install(TARGETS
     pnc_planner
-    pnc_planner_core
     DESTINATION lib/${PROJECT_NAME})
+
+install(TARGETS pnc_planner_core
+    EXPORT export_pnc_planner_core
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
+)
+
+install(DIRECTORY include/
+    DESTINATION include
+)
+
+ament_export_targets(export_pnc_planner_core HAS_LIBRARY_TARGET)
+ament_export_include_directories(include)
+ament_export_dependencies(
+    rclcpp
+    visualization_msgs
+    geometry_msgs
+    tf2
+    tf2_ros
+    nav_msgs
+)
 
 install(DIRECTORY
     launch
