@@ -108,6 +108,15 @@ if (BUILD_TESTING)
   target_link_libraries(test_quintic_polynomial
     pnc_planner_core
   )
+
+  ament_add_gtest(test_cartesian_frenet
+      test/test_cartesian_frenet.cpp
+  )
+
+  target_link_libraries(test_cartesian_frenet
+      pnc_planner_core
+  )
+
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)
