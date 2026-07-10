@@ -102,11 +102,11 @@ if (BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
 
   ament_add_gtest(test_quintic_polynomial
-    test/test_quintic_polynomial.cpp
+      test/test_quintic_polynomial.cpp
   )
 
   target_link_libraries(test_quintic_polynomial
-    pnc_planner_core
+      pnc_planner_core
   )
 
   ament_add_gtest(test_cartesian_frenet
@@ -121,6 +121,13 @@ if (BUILD_TESTING)
       test/test_reference_line.cpp
   )
   target_link_libraries(test_reference_line
+      pnc_planner_core
+  )
+
+  ament_add_gtest(test_lattice_planner
+     test/test_lattice_planner.cpp
+  )
+  target_link_libraries(test_lattice_planner
       pnc_planner_core
   )
 
