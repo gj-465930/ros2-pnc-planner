@@ -28,7 +28,7 @@ namespace {
     double s = 0.0;
     double l = 0.0;
 
-    const bool ok = pnc_planner::math::CartesianFrenetConverter::frenetToCartesian(
+    const bool ok = pnc_planner::math::CartesianFrenetConverter::cartesianToFrenet(
       10.0, -2.0, kMaxS, EvaluateStraightReferenceLine, s, l);
 
     EXPECT_TRUE(ok);
@@ -45,7 +45,7 @@ namespace {
 
     double x = 0.0;
     double y = 0.0;
-    
+
     ASSERT_TRUE(pnc_planner::math::CartesianFrenetConverter::frenetToCartesian(
       s, l, kMaxS, EvaluateStraightReferenceLine, x, y));
 
