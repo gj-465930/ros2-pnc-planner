@@ -1,0 +1,30 @@
+schema_version: "0.1"
+name: straight_cruise
+description: Straight road cruise without obstacles.
+tags: [basic, straight, cruise]
+
+route:
+  frame_id: map
+  points:
+    - [0.0, 0.0]
+    - [20.0, 0.0]
+    - [40.0, 0.0]
+    - [60.0, 0.0]
+
+ego:
+  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 5.0
+  state: CRUISING
+
+obstacles: []
+
+expected:
+  success: true
+  collision_free: true
+  reach_goal: false
+  max_abs_l: 0.5
+  max_acc: 3.0
+  max_decel: 5.0
+  timeout_sec: 10.0

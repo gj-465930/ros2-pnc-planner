@@ -1,0 +1,30 @@
+schema_version: "0.1"
+name: end_of_route
+description: Ego starts near the end of a short route.
+tags: [basic, straight, end_of_route]
+
+route:
+  frame_id: map
+  points:
+    - [0.0, 0.0]
+    - [10.0, 0.0]
+    - [20.0, 0.0]
+
+ego:
+  x: 16.0
+  y: 0.0
+  yaw: 0.0
+  v: 3.0
+  a: 0.0
+  state: CRUISING
+
+obstacles: []
+
+expected:
+  success: true
+  collision_free: true
+  reach_goal: true
+  max_abs_l: 0.5
+  max_acc: 3.0
+  max_decel: 5.0
+  timeout_sec: 8.0
