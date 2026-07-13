@@ -13,6 +13,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 add_library(pnc_planner_core
     src/visualizer.cpp
@@ -43,6 +44,21 @@ target_include_directories(pnc_planner_core PUBLIC
 
 target_compile_features(pnc_planner_core PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
+add_library(pnc_scenario_loader STATIC
+  src/scenario/scenario_loader.cpp
+)
+
+target_include_directories(pnc_scenario_loader PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+
+target_compile_features(pnc_scenario_loader PUBLIC cxx_std_17)  # Require  C++17
+
+target_link_libraries(pnc_scenario_loader PRIVATE
+    yaml-cpp::yaml-cpp
+)
+
+
 add_executable(pnc_planner
     src/main.cpp
 )
@@ -62,8 +78,28 @@ target_link_libraries(pnc_planner
     pnc_planner_core
 )
 
+add_executable(scenario_publisher
+    src/scenario/scenario_publisher.cpp
+)
+
+ament_target_dependencies(
+    scenario_publisher
+    "rclcpp"
+    "nav_msgs"
+    "geometry_msgs"
+)
+
+target_link_libraries(scenario_publisher
+    pnc_scenario_loader
+)
+
+target_compile_features(scenario_publisher PUBLIC
+    cxx_std_17
+)
+
 install(TARGETS
     pnc_planner
+    scenario_publisher
     DESTINATION lib/${PROJECT_NAME})
 
 install(TARGETS pnc_planner_core
@@ -94,6 +130,7 @@ install(DIRECTORY
     rviz
     urdf
     config
+    scenarios
     DESTINATION share/${PROJECT_NAME}
 )
 

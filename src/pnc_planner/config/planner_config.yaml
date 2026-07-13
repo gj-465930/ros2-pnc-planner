@@ -15,4 +15,4 @@ pnc_node:
         w_lon: 10.0
         w_offset: 2.0
         w_speed: 1.0
-    use_mock_routing: true
+    use_mock_routing: false
