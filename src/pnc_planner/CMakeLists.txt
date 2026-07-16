@@ -168,6 +168,16 @@ if (BUILD_TESTING)
       pnc_planner_core
   )
 
+  ament_add_gtest(test_scenario_loader
+      test/test_scenario_loader.cpp
+  )
+  target_link_libraries(test_scenario_loader
+      pnc_scenario_loader
+  )
+  target_compile_definitions(test_scenario_loader PRIVATE
+      PNC_PLANNER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  )
+
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)

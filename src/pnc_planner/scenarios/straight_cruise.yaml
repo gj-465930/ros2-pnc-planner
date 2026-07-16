@@ -16,6 +16,7 @@ ego:
   y: 0.0
   yaw: 0.0
   v: 5.0
+  a: 0.0
   state: CRUISING
 
 obstacles: []
