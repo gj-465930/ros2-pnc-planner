@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 project(pnc_planner)
 
-if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
-endif ()
+endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
@@ -14,8 +14,21 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
 
-add_library(pnc_planner_core
+rosidl_generate_interfaces(${PROJECT_NAME}
+    "msg/ScenarioInitialState.msg"
+    DEPENDENCIES std_msgs
+)
+
+rosidl_get_typesupport_target(
+    pnc_planner_typesupport_cpp
+    ${PROJECT_NAME}
+    "rosidl_typesupport_cpp"
+)
+
+add_library(pnc_planner_core STATIC
     src/visualizer.cpp
     src/ego_vehicle.cpp
     src/reference_line.cpp
@@ -38,6 +51,10 @@ ament_target_dependencies(
     "nav_msgs"
 )
 
+target_link_libraries(pnc_planner_core
+    "${pnc_planner_typesupport_cpp}"
+)
+
 target_include_directories(pnc_planner_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
@@ -52,29 +69,34 @@ target_include_directories(pnc_scenario_loader PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
-target_compile_features(pnc_scenario_loader PUBLIC cxx_std_17)  # Require  C++17
+target_compile_features(pnc_scenario_loader
+    PUBLIC
+      cxx_std_17
+)  # Require  C++17
 
 target_link_libraries(pnc_scenario_loader PRIVATE
     yaml-cpp::yaml-cpp
 )
 
-
-add_executable(pnc_planner
+add_executable(pnc_planner_node
     src/main.cpp
 )
 
 ament_target_dependencies(
-    pnc_planner
+    pnc_planner_node
     "rclcpp"
 )
 
-target_include_directories(pnc_planner PUBLIC
+target_include_directories(pnc_planner_node PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
-target_compile_features(pnc_planner PUBLIC c_std_99 cxx_std_17)
+target_compile_features(pnc_planner_node
+    PUBLIC
+      cxx_std_17
+)
 
-target_link_libraries(pnc_planner
+target_link_libraries(pnc_planner_node
     pnc_planner_core
 )
 
@@ -91,6 +113,7 @@ ament_target_dependencies(
 
 target_link_libraries(scenario_publisher
     pnc_scenario_loader
+    "${pnc_planner_typesupport_cpp}"
 )
 
 target_compile_features(scenario_publisher PUBLIC
@@ -98,30 +121,12 @@ target_compile_features(scenario_publisher PUBLIC
 )
 
 install(TARGETS
-    pnc_planner
+    pnc_planner_node
     scenario_publisher
     DESTINATION lib/${PROJECT_NAME})
 
-install(TARGETS pnc_planner_core
-    EXPORT export_pnc_planner_core
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION bin
-)
-
-install(DIRECTORY include/
-    DESTINATION include
-)
-
-ament_export_targets(export_pnc_planner_core HAS_LIBRARY_TARGET)
-ament_export_include_directories(include)
 ament_export_dependencies(
-    rclcpp
-    visualization_msgs
-    geometry_msgs
-    tf2
-    tf2_ros
-    nav_msgs
+    rosidl_default_runtime
 )
 
 install(DIRECTORY
@@ -134,7 +139,7 @@ install(DIRECTORY
     DESTINATION share/${PROJECT_NAME}
 )
 
-if (BUILD_TESTING)
+if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
 
@@ -162,7 +167,7 @@ if (BUILD_TESTING)
   )
 
   ament_add_gtest(test_lattice_planner
-     test/test_lattice_planner.cpp
+      test/test_lattice_planner.cpp
   )
   target_link_libraries(test_lattice_planner
       pnc_planner_core
@@ -186,6 +191,6 @@ if (BUILD_TESTING)
   # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
-endif ()
+endif()
 
 ament_package()

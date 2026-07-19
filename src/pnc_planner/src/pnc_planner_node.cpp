@@ -48,10 +48,6 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 
   // 初始化自车
   ego_vehicle_ = std::make_shared<EgoVehicle>(this);
-  ego_vehicle_->setPose(0.0, 0.0, 0.0);
-  ego_vehicle_->setVelocity(5.0);
-  ego_vehicle_->setCommand(0.0, 0.0);
-  ego_vehicle_->updateState(0.1);
 
   // 初始化参考线对象
   ref_line_ = std::make_shared<ReferenceLine>();
@@ -70,7 +66,7 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
       p.z = 0.0;
       test_points.push_back(p);
     }
-    this->updateReferenceLine(test_points);
+    route_ready_ = this->updateReferenceLine(test_points);
   }
 
   // 初始化控制器
@@ -80,9 +76,19 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 
   visualizer_ = std::make_shared<Visualizer>(this);
 
+  rclcpp::QoS scenario_qos(rclcpp::KeepLast(1));
+  scenario_qos.reliable();
+  scenario_qos.transient_local();
+
   global_route_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-    "/routing_path", 10,
+    "/routing_path", scenario_qos,
     [this](nav_msgs::msg::Path::ConstSharedPtr msg) { this->globalRouteCallback(msg); });
+
+  initial_state_sub_ = this->create_subscription<pnc_planner::msg::ScenarioInitialState>(
+    "/scenario/initial_state", scenario_qos,
+    [this](const pnc_planner::msg::ScenarioInitialState::ConstSharedPtr & msg) {
+      this->initialStateCallback(msg);
+    });
 
   timer_ =
     this->create_wall_timer(std::chrono::milliseconds(100), [this]() { this->timerCallback(); });
@@ -90,6 +96,10 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 
 void PncPlannerNode::timerCallback()
 {
+  if (!route_ready_ || !initial_state_ready_) {
+    return;
+  }
+
   double dt = 0.1;
 
   // 可视化参考线
@@ -110,7 +120,7 @@ void PncPlannerNode::timerCallback()
   }
 }
 
-void PncPlannerNode::updateReferenceLine(const std::vector<geometry_msgs::msg::Point> & points)
+bool PncPlannerNode::updateReferenceLine(const std::vector<geometry_msgs::msg::Point> & points)
 {
   std::vector<double> x, y;
   for (auto point : points) {
@@ -120,9 +130,10 @@ void PncPlannerNode::updateReferenceLine(const std::vector<geometry_msgs::msg::P
 
   if (!ref_line_->init(x, y)) {
     RCLCPP_WARN(this->get_logger(), "参考线初始化失败!");
-    return;
+    return false;
   }
   RCLCPP_INFO(this->get_logger(), "初始化参考线成功，总长度为 %.2f", ref_line_->getTotalLength());
+  return true;
 }
 
 void PncPlannerNode::publishReferenceLine()
@@ -175,7 +186,7 @@ void PncPlannerNode::globalRouteCallback(const nav_msgs::msg::Path::ConstSharedP
     raw_points.push_back(p);
   }
 
-  this->updateReferenceLine(raw_points);
+  route_ready_ = this->updateReferenceLine(raw_points);
 }
 
 void PncPlannerNode::publishTrajectory(const Trajectory & traj)
@@ -218,6 +229,31 @@ void PncPlannerNode::trackTrajectory(const double dt)
 
   ego_vehicle_->setCommand(a, omega);
   ego_vehicle_->updateState(dt);
+}
+
+void PncPlannerNode::initialStateCallback(
+  const pnc_planner::msg::ScenarioInitialState::ConstSharedPtr & msg)
+{
+  if (initial_state_ready_) {
+    RCLCPP_WARN(this->get_logger(), "Ignoring repeated scenario initial state");
+    return;
+  }
+
+  if (msg->state != "CRUISING") {
+    RCLCPP_ERROR(this->get_logger(), "Unsupported scenario state: %s", msg->state.c_str());
+    return;
+  }
+
+  ego_vehicle_->setPose(msg->x, msg->y, msg->yaw);
+  ego_vehicle_->setVelocity(msg->velocity);
+  ego_vehicle_->setCommand(msg->acceleration, 0.0);
+  ego_vehicle_->updateState(0.0);
+
+  initial_state_ready_ = true;
+
+  RCLCPP_INFO(
+    this->get_logger(), "Applied initial state: x=%.2f, y=%.2f, yaw=%.2f, v=%.2f, a=%.2f, state=%s",
+    msg->x, msg->y, msg->yaw, msg->velocity, msg->acceleration, msg->state.c_str());
 }
 
 }  // namespace pnc_planner

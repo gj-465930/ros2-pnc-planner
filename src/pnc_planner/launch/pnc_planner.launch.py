@@ -15,7 +15,7 @@ def generate_launch_description():
 
     pnc_planner_node = Node(
         package="pnc_planner",
-        executable="pnc_planner",
+        executable="pnc_planner_node",
         name="pnc_node",
         output="screen",
         parameters=[os.path.join(pkg_dir, "config", "planner_config.yaml")],
