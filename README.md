@@ -23,7 +23,9 @@
 - 简化自车状态仿真。
 - RViz 中显示参考线、规划轨迹和车辆模型。
 - 支持外部 `/routing_path` 输入和 YAML 场景路线发布。
-- 已添加核心模块单元测试：`QuinticPolynomial`、`CartesianFrenetConverter`、`ReferenceLine` 和 `LatticePlanner` smoke test。
+- 支持通过 `/scenario/initial_state` 发布并应用场景自车初始状态。
+- 路线和初始状态均就绪后才启动规划循环。
+- 已添加核心模块单元测试：`QuinticPolynomial`、`CartesianFrenetConverter`、`ReferenceLine`、`LatticePlanner` smoke test 和 `ScenarioLoader`。
 - 已建立第一版 scenario YAML schema 和 `scenario_publisher`，用于基础场景复现。
 
 ## 系统架构
@@ -108,10 +110,14 @@ src/pnc_planner/config/planner_config.yaml
 
 ## 运行测试
 
-运行当前 package 测试：
+运行功能 gtest：
 
 ```bash
-colcon test --packages-select pnc_planner --event-handlers console_direct+
+colcon test-result --delete-yes
+colcon test \
+  --packages-select pnc_planner \
+  --event-handlers console_direct+ \
+  --ctest-args -R '^test_' -V
 colcon test-result --verbose
 ```
 
@@ -122,13 +128,18 @@ QuinticPolynomial 边界条件
 CartesianFrenet 直线参考线坐标转换
 ReferenceLine 初始化、查询和边界处理
 LatticePlanner 无障碍直线 smoke test
+ScenarioLoader 场景 ego 初始状态解析与非法输入检查
 ```
 
-当前状态：
+当前功能 gtest 状态：
 
 ```text
-12 tests, 0 errors, 0 failures, 0 skipped
+5 个 gtest target，18 个测试断言全部通过
 ```
+
+完整质量检查可以不带 `-R '^test_'` 过滤重新运行。它还包含格式、Python 和 XML lint。
+当前仓库存在全局格式规则不一致以及离线 XML schema 问题，因此应将功能 gtest 与完整质量
+检查分开查看。
 
 ## 场景验证
 
@@ -150,7 +161,7 @@ docs/scenario_schema.md
 |---|---|---|
 | `straight_cruise` | 直线巡航 | Pass |
 | `curve_cruise` | 缓弯巡航 | Pass |
-| `end_of_route` | 接近路线终点 | Pass |
+| `end_of_route` | 接近路线终点 | Partial：链路通过，终点停车待实现 |
 
 详细验证记录见：
 
@@ -164,14 +175,17 @@ docs/scenario_validation.md
 - 当前规划 baseline 是 Lattice Planner，尚未实现完整 EM Planner。
 - 当前已有核心模块基础单元测试，但覆盖范围仍以基础数学、参考线和无障碍 Lattice smoke test 为主。
 - 当前已有 YAML 场景、ScenarioLoader 和 ScenarioPublisher，但 expected 指标仍未自动采集或自动判定。
-- ego 初始状态已写入 YAML，但尚未注入 PncPlannerNode。
+- ego 初始状态已经通过 `/scenario/initial_state` 接入 `PncPlannerNode`，但 `state` 字段尚未驱动独立行为状态机。
+- 接近路线终点时尚未生成合理停车轨迹，车辆可能越过参考线终点。
+- 规划失败后缺少陈旧轨迹失效和安全降级策略。
 - 障碍物输入、碰撞检测和 RViz 障碍物可视化尚未形成完整闭环。
 - 行为规划尚未独立成单独的 planning layer。
 
 ## 后续计划
 
 - 扩展场景 runner 和 metrics，使 `expected` 字段能够自动判定。
-- 将 ego 初始状态接入场景执行流程。
+- 增加规划失败时的陈旧轨迹保护和安全降级策略。
+- 实现接近路线终点时的停车纵向规划。
 - 打通障碍物输入、碰撞检测和 RViz 可视化链路。
 - 增加简单行为规划器和 planning target 抽象。
 - 完善 Lattice baseline 的调试输出、代价分解和运行指标。
