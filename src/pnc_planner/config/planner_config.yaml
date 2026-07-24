@@ -16,3 +16,4 @@ pnc_node:
         w_offset: 2.0
         w_speed: 1.0
     use_mock_routing: false
+    planning_failure_fallback_decel: -3.0

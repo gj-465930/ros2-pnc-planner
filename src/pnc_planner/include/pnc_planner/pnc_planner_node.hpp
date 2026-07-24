@@ -46,6 +46,8 @@ private:
 
   bool route_ready_{false};
   bool initial_state_ready_{false};
+
+  double planning_failure_fallback_decel_{-3.0};
 };
 
 }  // namespace pnc_planner

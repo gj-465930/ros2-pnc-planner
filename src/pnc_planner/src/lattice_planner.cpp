@@ -10,6 +10,7 @@ namespace pnc_planner
 bool LatticePlanner::plan(
   const VehicleInfo & ego, const ReferenceLine & ref_line, Trajectory & out_trajectory)
 {
+  out_trajectory.clear();
   ref_line_ = &ref_line;
 
   // 生成横向候选轨迹
@@ -42,7 +43,6 @@ bool LatticePlanner::plan(
   const auto & best_lat = lat_trajs[best_lat_idx];
   const auto & best_lon = lon_trajs[best_lon_idx];
 
-  out_trajectory.clear();
   auto success = combine_and_transform_to_2d(best_lat, best_lon, ref_line, out_trajectory);
 
   return success;

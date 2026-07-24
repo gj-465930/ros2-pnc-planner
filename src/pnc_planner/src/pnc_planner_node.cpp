@@ -23,6 +23,7 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   declare_parameter("lattice_planner.limits.target_speed", 15.0);
   declare_parameter("lattice_planner.limits.planning_time", 5.0);
   // weights
+  declare_parameter("planning_failure_fallback_decel", -3.0);
   declare_parameter("lattice_planner.weights.w_lat", 1.0);
   declare_parameter("lattice_planner.weights.w_lon", 10.0);
   declare_parameter("lattice_planner.weights.w_offset", 0.3);
@@ -43,6 +44,14 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   config.w_lon = get_parameter("lattice_planner.weights.w_lon").as_double();
   config.w_offset = get_parameter("lattice_planner.weights.w_offset").as_double();
   config.w_speed = get_parameter("lattice_planner.weights.w_speed").as_double();
+
+  planning_failure_fallback_decel_ = get_parameter("planning_failure_fallback_decel").as_double();
+  if (!std::isfinite(planning_failure_fallback_decel_) || planning_failure_fallback_decel_ > 0.0) {
+    RCLCPP_WARN(
+      this->get_logger(), "Invalid planning_failure_fallback_decel %.2f, using default -3.0",
+      planning_failure_fallback_decel_);
+    planning_failure_fallback_decel_ = -3.0;
+  }
 
   lattice_planner_ = std::make_shared<LatticePlanner>(config);
 
@@ -109,15 +118,28 @@ void PncPlannerNode::timerCallback()
   VehicleInfo ego = ego_vehicle_->getVehicleState();
 
   // 规划
-  if (lattice_planner_->plan(ego, *ref_line_, planned_traj_)) {
-    // 可视化规划路径
+  Trajectory candidate_traj;
+  const bool planning_success = lattice_planner_->plan(ego, *ref_line_, candidate_traj);
+
+  if (planning_success && !candidate_traj.empty()) {
+    planned_traj_ = candidate_traj;
+
+    // 轨迹可视化
     publishTrajectory(planned_traj_);
+    // 跟踪
+    trackTrajectory(dt);
+    return;
   }
 
-  // 跟踪
-  if (!planned_traj_.empty()) {
-    trackTrajectory(dt);
-  }
+  planned_traj_.clear();
+
+  RCLCPP_WARN_THROTTLE(
+    this->get_logger(), *this->get_clock(), 1000,
+    "Planning failed; cleared stale trajectory and applying fallback decel %.2f",
+    planning_failure_fallback_decel_);
+
+  ego_vehicle_->setCommand(planning_failure_fallback_decel_, 0.0);
+  ego_vehicle_->updateState(dt);
 }
 
 bool PncPlannerNode::updateReferenceLine(const std::vector<geometry_msgs::msg::Point> & points)

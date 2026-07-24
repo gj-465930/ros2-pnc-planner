@@ -13,7 +13,8 @@
 #include "pnc_planner/math/quintic_polynomial.hpp"
 #include "pnc_planner/planner_base.hpp"
 
-namespace pnc_planner {
+namespace pnc_planner
+{
 
 // clang-format off
 class LatticePlanner : public PlannerBase {
