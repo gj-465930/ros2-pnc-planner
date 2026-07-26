@@ -38,7 +38,7 @@ Scenario
 需要提前设计完整 Scenario 数据结构
 当前 PncPlannerNode 只有路线 topic 输入
 ego、obstacles 和 expected 尚无完整注入或验证接口
-现在实现全部字段会扩大 Task 015 的范围
+现在实现全部字段会扩大第一版场景执行链路的范围
 ```
 
 ### 方案二：单一 Lightweight Publisher

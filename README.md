@@ -25,6 +25,8 @@
 - 支持外部 `/routing_path` 输入和 YAML 场景路线发布。
 - 支持通过 `/scenario/initial_state` 发布并应用场景自车初始状态。
 - 路线和初始状态均就绪后才启动规划循环。
+- 规划失败时会使上一周期轨迹失效，并执行参数化的受控减速，不继续跟踪陈旧轨迹。
+- 支持互斥的 mock 输入模式和 YAML 场景模式；一个 planner 进程只接受一个完整场景。
 - 已添加核心模块单元测试：`QuinticPolynomial`、`CartesianFrenetConverter`、`ReferenceLine`、`LatticePlanner` smoke test 和 `ScenarioLoader`。
 - 已建立第一版 scenario YAML schema 和 `scenario_publisher`，用于基础场景复现。
 
@@ -146,11 +148,8 @@ LatticePlanner 无障碍直线 smoke test
 ScenarioLoader 场景 ego 初始状态解析与非法输入检查
 ```
 
-当前功能 gtest 状态：
-
-```text
-5 个 gtest target，18 个测试断言全部通过
-```
+最近一次已有测试记录（2026-07-27）包含 5 个 gtest target、19 个测试，全部通过，覆盖
+规划成功与失败输出路径。后续修改后仍应以重新执行 `colcon test-result --verbose` 为准。
 
 完整质量检查可以不带 `-R '^test_'` 过滤重新运行。它还包含格式、Python 和 XML lint。
 当前仓库存在全局格式规则不一致以及离线 XML schema 问题，因此应将功能 gtest 与完整质量
@@ -191,17 +190,18 @@ docs/scenario_validation.md
 - 当前已有核心模块基础单元测试，但覆盖范围仍以基础数学、参考线和无障碍 Lattice smoke test 为主。
 - 当前已有 YAML 场景、ScenarioLoader 和 ScenarioPublisher，但 expected 指标仍未自动采集或自动判定。
 - ego 初始状态已经通过 `/scenario/initial_state` 接入 `PncPlannerNode`，但 `state` 字段尚未驱动独立行为状态机。
-- 接近路线终点时尚未生成合理停车轨迹，车辆可能越过参考线终点。
-- 规划失败后缺少陈旧轨迹失效和安全降级策略。
+- 接近路线终点时尚未生成正常的目标停车轨迹；当前只能在规划失败后通过 fallback deceleration 安全降级。
+- 当前场景生命周期要求切换 YAML 场景前重启 planner，尚未实现 reset 或 batch runner。
 - 障碍物输入、碰撞检测和 RViz 障碍物可视化尚未形成完整闭环。
 - 行为规划尚未独立成单独的 planning layer。
 
 ## 后续计划
 
-- 扩展场景 runner 和 metrics，使 `expected` 字段能够自动判定。
-- 增加规划失败时的陈旧轨迹保护和安全降级策略。
-- 实现接近路线终点时的停车纵向规划。
-- 打通障碍物输入、碰撞检测和 RViz 可视化链路。
+- 定义静态障碍物的数据与 ROS2 传输契约。
+- 打通 YAML 障碍物解析、发布、接收、RViz 可视化和 Lattice 碰撞过滤链路。
+- 使用阻塞场景和可绕行场景验证静态障碍物行为，同时保留无障碍场景回归验证。
+- 后续扩展场景 runner 和 metrics，使 `expected` 字段能够自动判定。
+- 在 Behavior/PlanningTarget 层实现正常的目标停车与障碍物停车规划。
 - 增加简单行为规划器和 planning target 抽象。
 - 完善 Lattice baseline 的调试输出、代价分解和运行指标。
 - 在当前 baseline 稳定后扩展最小版本 EM Planner。
