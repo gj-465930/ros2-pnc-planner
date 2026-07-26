@@ -125,7 +125,7 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 
   global_route_sub_ = this->create_subscription<nav_msgs::msg::Path>(
     "/routing_path", scenario_qos,
-    [this](nav_msgs::msg::Path::ConstSharedPtr msg) { this->globalRouteCallback(msg); });
+    [this](const nav_msgs::msg::Path::ConstSharedPtr & msg) { this->globalRouteCallback(msg); });
 
   initial_state_sub_ = this->create_subscription<pnc_planner::msg::ScenarioInitialState>(
     "/scenario/initial_state", scenario_qos,
@@ -192,7 +192,7 @@ bool PncPlannerNode::updateReferenceLine(const std::vector<geometry_msgs::msg::P
   return true;
 }
 
-void PncPlannerNode::publishReferenceLine()
+void PncPlannerNode::publishReferenceLine() const
 {
   if (ref_line_ == nullptr || ref_line_->getTotalLength() <= 0.0) {
     return;
@@ -235,9 +235,23 @@ void PncPlannerNode::globalRouteCallback(const nav_msgs::msg::Path::ConstSharedP
     return;
   }
 
-  if (msg->poses.size() < 2) return;
+  if (route_ready_) {
+    RCLCPP_WARN_ONCE(
+      this->get_logger(),
+      "Ignoring repeated /routing_path. "
+      "Restart planner to switch scenarios.");
+    return;
+  }
+
+  if (msg->poses.size() < 3) {
+    RCLCPP_ERROR(
+      this->get_logger(), "Rejected /routing_path: expected at least 3 poses, got %zu",
+      msg->poses.size());
+    return;
+  }
 
   std::vector<geometry_msgs::msg::Point> raw_points;
+  raw_points.reserve(msg->poses.size());
 
   for (const auto & pose_stamp : msg->poses) {
     geometry_msgs::msg::Point p;
@@ -248,10 +262,17 @@ void PncPlannerNode::globalRouteCallback(const nav_msgs::msg::Path::ConstSharedP
     raw_points.push_back(p);
   }
 
-  route_ready_ = this->updateReferenceLine(raw_points);
+  if (!this->updateReferenceLine(raw_points)) {
+    RCLCPP_ERROR(
+      this->get_logger(), "Rejected /routing_path because reference line initialization failed");
+    return;
+  }
+
+  route_ready_ = true;
+  logScenarioReadyIfComplete();
 }
 
-void PncPlannerNode::publishTrajectory(const Trajectory & traj)
+void PncPlannerNode::publishTrajectory(const Trajectory & traj) const
 {
   nav_msgs::msg::Path path;
 
@@ -303,12 +324,24 @@ void PncPlannerNode::initialStateCallback(
   }
 
   if (initial_state_ready_) {
-    RCLCPP_WARN(this->get_logger(), "Ignoring repeated scenario initial state");
+    RCLCPP_WARN_ONCE(
+      this->get_logger(),
+      "Ignoring repeated /scenario/initial_state. "
+      "Restart planner to switch scenarios.");
     return;
   }
 
   if (msg->state != "CRUISING") {
     RCLCPP_ERROR(this->get_logger(), "Unsupported scenario state: %s", msg->state.c_str());
+    return;
+  }
+
+  const bool state_values_valid = std::isfinite(msg->x) && std::isfinite(msg->y) &&
+                                  std::isfinite(msg->yaw) && std::isfinite(msg->velocity) &&
+                                  std::isfinite(msg->acceleration) && msg->velocity >= 0.0;
+
+  if (!state_values_valid) {
+    RCLCPP_ERROR(this->get_logger(), "Rejected scenario initial state with invalid numeric values");
     return;
   }
 
@@ -322,6 +355,21 @@ void PncPlannerNode::initialStateCallback(
   RCLCPP_INFO(
     this->get_logger(), "Applied initial state: x=%.2f, y=%.2f, yaw=%.2f, v=%.2f, a=%.2f, state=%s",
     msg->x, msg->y, msg->yaw, msg->velocity, msg->acceleration, msg->state.c_str());
+
+  logScenarioReadyIfComplete();
+}
+
+void PncPlannerNode::logScenarioReadyIfComplete()
+{
+  if (!route_ready_ || !initial_state_ready_ || scenario_ready_logged_) {
+    return;
+  }
+
+  scenario_ready_logged_ = true;
+  RCLCPP_INFO(
+    this->get_logger(),
+    "Scenario inputs are complete; starting planning. "
+    "Restart planner to switch scenarios.");
 }
 
 }  // namespace pnc_planner

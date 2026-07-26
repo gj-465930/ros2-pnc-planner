@@ -27,11 +27,12 @@ public:
 private:
   void timerCallback();
   bool updateReferenceLine(const std::vector<geometry_msgs::msg::Point> & points);
-  void publishReferenceLine();
+  void publishReferenceLine() const;
   void globalRouteCallback(const nav_msgs::msg::Path::ConstSharedPtr & msg);
-  void publishTrajectory(const Trajectory & traj);
+  void publishTrajectory(const Trajectory & traj) const;
   void trackTrajectory(const double dt);
   void initialStateCallback(const pnc_planner::msg::ScenarioInitialState::ConstSharedPtr & msg);
+  void logScenarioReadyIfComplete();
 
   Trajectory planned_traj_;
   std::shared_ptr<EgoVehicle> ego_vehicle_;
@@ -47,6 +48,7 @@ private:
   bool use_mock_routing_{false};
   bool route_ready_{false};
   bool initial_state_ready_{false};
+  bool scenario_ready_logged_{false};
 
   double planning_failure_fallback_decel_{-3.0};
 };
