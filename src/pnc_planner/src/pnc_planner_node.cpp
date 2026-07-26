@@ -29,6 +29,13 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   declare_parameter("lattice_planner.weights.w_offset", 0.3);
   declare_parameter("lattice_planner.weights.w_speed", 1.0);
 
+  // mock_ego
+  declare_parameter("mock_ego.x", 0.0);
+  declare_parameter("mock_ego.y", 0.0);
+  declare_parameter("mock_ego.yaw", 0.0);
+  declare_parameter("mock_ego.v", 5.0);
+  declare_parameter("mock_ego.a", 0.0);
+
   // 读取参数
   LatticePlannerConfig config;
   config.max_v = get_parameter("lattice_planner.limits.max_v").as_double();
@@ -61,21 +68,48 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   // 初始化参考线对象
   ref_line_ = std::make_shared<ReferenceLine>();
 
-  this->declare_parameter<bool>("use_mock_routing", false);
-  bool use_mock;
-  this->get_parameter("use_mock_routing", use_mock);
+  this->declare_parameter("use_mock_routing", false);
+  use_mock_routing_ = this->get_parameter("use_mock_routing").as_bool();
 
-  if (use_mock) {
-    RCLCPP_WARN(this->get_logger(), "正在使用mock数据测试");
+  if (use_mock_routing_) {
+    RCLCPP_WARN(this->get_logger(), "Using internal mock routing and ego state");
     std::vector<geometry_msgs::msg::Point> test_points;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 20; i++) {
       geometry_msgs::msg::Point p;
       p.x = i * 5.0;
       p.y = i * i * 1.0;  // 抛物线
       p.z = 0.0;
       test_points.push_back(p);
     }
-    route_ready_ = this->updateReferenceLine(test_points);
+    const bool mock_route_ready = this->updateReferenceLine(test_points);
+
+    const double x = this->get_parameter("mock_ego.x").as_double();
+    const double y = this->get_parameter("mock_ego.y").as_double();
+    const double yaw = this->get_parameter("mock_ego.yaw").as_double();
+    const double v = this->get_parameter("mock_ego.v").as_double();
+    const double a = this->get_parameter("mock_ego.a").as_double();
+
+    const bool mock_state_valid = std::isfinite(x) && std::isfinite(y) && std::isfinite(yaw) &&
+                                  std::isfinite(v) && std::isfinite(a);
+
+    if (!mock_route_ready || !mock_state_valid) {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "Failed to initialize mock routing mode: route_ready=%s, state_valid=%s",
+        mock_route_ready ? "true" : "false", mock_state_valid ? "true" : "false");
+    } else {
+      ego_vehicle_->setPose(x, y, yaw);
+      ego_vehicle_->setVelocity(v);
+      ego_vehicle_->setCommand(a, 0.0);
+      ego_vehicle_->updateState(0.0);
+
+      route_ready_ = true;
+      initial_state_ready_ = true;
+
+      RCLCPP_INFO(
+        this->get_logger(), "Initialized mock inputs: x=%.2f, y=%.2f, yaw=%.2f, v=%.2f, a=%.2f", x,
+        y, yaw, v, a);
+    }
   }
 
   // 初始化控制器
@@ -195,6 +229,12 @@ void PncPlannerNode::publishReferenceLine()
 
 void PncPlannerNode::globalRouteCallback(const nav_msgs::msg::Path::ConstSharedPtr & msg)
 {
+  if (use_mock_routing_) {
+    RCLCPP_WARN_ONCE(
+      this->get_logger(), "Ignoring /routing_path because mock routing mode is enabled");
+    return;
+  }
+
   if (msg->poses.size() < 2) return;
 
   std::vector<geometry_msgs::msg::Point> raw_points;
@@ -256,6 +296,12 @@ void PncPlannerNode::trackTrajectory(const double dt)
 void PncPlannerNode::initialStateCallback(
   const pnc_planner::msg::ScenarioInitialState::ConstSharedPtr & msg)
 {
+  if (use_mock_routing_) {
+    RCLCPP_WARN_ONCE(
+      this->get_logger(), "Ignoring /scenario/initial_state because mock routing mode is enabled");
+    return;
+  }
+
   if (initial_state_ready_) {
     RCLCPP_WARN(this->get_logger(), "Ignoring repeated scenario initial state");
     return;

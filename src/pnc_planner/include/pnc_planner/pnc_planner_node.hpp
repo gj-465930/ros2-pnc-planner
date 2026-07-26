@@ -44,6 +44,7 @@ private:
   std::unique_ptr<controller::LateralControllerBase> lateral_ctrl_;
   std::unique_ptr<controller::LongitudinalControllerBase> longitudinal_controller_;
 
+  bool use_mock_routing_{false};
   bool route_ready_{false};
   bool initial_state_ready_{false};
 

@@ -17,3 +17,10 @@ pnc_node:
         w_speed: 1.0
     use_mock_routing: false
     planning_failure_fallback_decel: -3.0
+
+    mock_ego:
+      x: 0.0
+      y: 0.0
+      yaw: 0.0
+      v: 5.0
+      a: 0.0
