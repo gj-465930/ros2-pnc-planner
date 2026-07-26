@@ -102,6 +102,53 @@ PncPlannerNode 已经订阅 /routing_path，可以直接复用现有输入接口
 
 `ScenarioLoader` 负责回答“文件中包含什么有效数据”，`ScenarioPublisher` 负责回答“如何把这些数据送入 ROS2 系统”。Loader 不发布 topic，Publisher 不直接解析 YAML 细节。
 
+## 场景生命周期与输入一致性
+
+当前第一版使用两个独立的 ROS2 输入 topic：
+
+```text
+/routing_path
+/scenario/initial_state
+```
+
+它们在同一个 YAML 场景中是配套字段，但发布后由两个独立回调接收。ROS2 QoS 可以保证消息可靠到达和晚加入订阅者收到最近消息，但不会为两个 topic 提供原子场景事务，也不会自动携带场景关联关系。
+
+因此 `PncPlannerNode` 采用明确的单场景生命周期：
+
+```text
+未收到输入
+      ↓
+只收到 route 或只收到 ego
+      ↓
+route 和 ego 第一次成功接收
+      ↓
+场景输入完整，进入规划
+      ↓
+后续重复输入全部拒绝
+```
+
+具体规则如下：
+
+```text
+合法 route 第一次接收成功后锁定参考线
+合法 ego 初始状态第一次接收成功后锁定自车初始状态
+非法 route 不会锁定 route_ready_，后续合法路线仍可重试
+非法 ego 不会锁定 initial_state_ready_，后续合法状态仍可重试
+运行中收到重复 route 或 ego 时输出警告并拒绝
+切换场景必须重启 PncPlannerNode
+```
+
+这样可以避免以下静默错配：
+
+```text
+第二个场景的新 route
++ 第一个场景已经运行中的旧 ego
+```
+
+当前版本暂不支持无重启的批量场景切换，也不新增 `scenario_id`、reset service/action 或合并场景消息。未来实现 batch runner 时，需要设计原子加载和完整 reset，至少重置参考线、自车状态、规划轨迹、控制器内部状态和场景指标。
+
+当 `use_mock_routing=true` 时，节点内部同时初始化 mock route 和 mock ego，不等待外部场景 topic；收到外部场景消息时会明确忽略。mock 模式与 YAML 场景模式是互斥的输入模式。
+
 ## 第一版数据结构
 
 第一版只需要保存路线发布所需的数据。可以使用最小的 `ScenarioData`，至少包含：

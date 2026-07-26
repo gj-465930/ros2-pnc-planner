@@ -102,6 +102,21 @@ ros2 launch pnc_planner pnc_planner.launch.py
 use_mock_routing: false
 ```
 
+### 场景生命周期限制
+
+当前第一版 `PncPlannerNode` 采用单场景生命周期：
+
+```text
+一个 planner 进程只运行一个完整场景
+第一次成功接收的 route 和 ego 初始状态会被锁定
+后续重复的 /routing_path 和 /scenario/initial_state 会被拒绝
+切换场景前需要重启 planner
+```
+
+路线和初始状态虽然来自同一个 YAML，但运行时通过两个独立 topic 发布。节点因此不会把后续路线和旧的自车状态静默组合，避免出现“新路线 + 旧 ego”的场景错配。
+
+当 `use_mock_routing: true` 时，节点内部创建 mock route 和 mock ego，并忽略外部场景 topic。mock 模式与 YAML 场景模式不应同时使用。
+
 规划器参数位于：
 
 ```text
