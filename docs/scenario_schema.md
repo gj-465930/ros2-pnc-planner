@@ -1,17 +1,19 @@
 # Scenario YAML Schema
 
-本文档定义 Mini PNC Lab 第一版场景 YAML 格式。目标是让路线、初始自车状态、障碍物和期望结果可以被固定文件复现，避免项目只依赖手写 mock route。
+场景 YAML 用来固定路线、自车初始状态、障碍物和预期结果，使同一个场景可以重复运行和
+检查，而不依赖节点中的临时 mock 数据。
 
-当前 schema 是 **v0.1**，面向 Phase 3 的基础场景验证。它不追求覆盖真实自动驾驶场景库的全部复杂度，而是优先满足：
+## 版本状态
 
-```text
-可读
-可手写
-可被 C++ 或 Python 简单解析
-可用于后续场景 runner 和 metrics
-```
+| Version | Status | Obstacles |
+|---|---|---|
+| `0.1` | 已实现 | 只允许 `obstacles: []` |
+| `0.2` | 格式已确定，运行链路尚未完全接入 | 支持静态矩形障碍物 |
 
-## 顶层结构
+现有的 `straight_cruise`、`curve_cruise` 和 `end_of_route` 继续使用 v0.1。新增静态
+障碍物场景使用 v0.2。
+
+## v0.1 示例
 
 ```yaml
 schema_version: "0.1"
@@ -46,43 +48,85 @@ expected:
   timeout_sec: 10.0
 ```
 
-## 字段说明
+## v0.2 静态障碍物示例
+
+```yaml
+schema_version: "0.2"
+name: static_obstacle_avoid
+description: Avoid a static obstacle on a straight route.
+tags: [obstacle, static, avoid]
+
+route:
+  frame_id: map
+  points:
+    - [0.0, 0.0]
+    - [20.0, 0.0]
+    - [40.0, 0.0]
+    - [60.0, 0.0]
+
+ego:
+  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 5.0
+  a: 0.0
+  state: CRUISING
+
+obstacles:
+  - id: 1
+    x: 20.0
+    y: 0.0
+    heading: 0.0
+    length: 4.5
+    width: 2.0
+
+expected:
+  success: true
+  collision_free: true
+  reach_goal: false
+  max_abs_l: 3.5
+  max_acc: 3.0
+  max_decel: 5.0
+  timeout_sec: 10.0
+```
+
+## 通用字段
 
 ### `schema_version`
 
-场景格式版本。第一版固定为：
+格式版本必须是字符串：
 
 ```yaml
 schema_version: "0.1"
 ```
 
-后续如果新增动态障碍物、交通规则、红绿灯或复杂地图字段，再升级版本。
+兼容规则：
+
+- v0.1 的 `obstacles` 必须为空。
+- v0.2 的 `obstacles` 可以为空，也可以包含静态障碍物。
+- 动态障碍物、交通规则和信号灯需要新的 schema 版本。
 
 ### `name`
 
-场景名称，应和文件名基本一致。例如：
+场景名称应与文件名一致，使用小写字母和下划线：
 
 ```yaml
-name: straight_cruise
+name: static_obstacle_avoid
 ```
-
-命名建议使用小写加下划线。
 
 ### `description`
 
-一句话说明场景目的。它不是展示文案，而是帮助开发者快速理解这个场景验证什么。
+一句话说明场景内容和验证目的。
 
 ### `tags`
 
-标签列表，用于后续批量筛选场景。例如：
+用于后续筛选或批量运行场景：
 
 ```yaml
-tags: [basic, curve, cruise]
+tags: [obstacle, static, avoid]
 ```
 
 ### `route`
-
-路线输入。Phase 3 第一版只支持离散路径点：
 
 ```yaml
 route:
@@ -93,18 +137,15 @@ route:
     - [40.0, 0.0]
 ```
 
-要求：
+约束：
 
-```text
-至少 3 个点
-点按行驶方向排序
-单位为 meter
-frame_id 第一版固定使用 map
-```
+- 至少包含 3 个点。
+- 路径点按行驶方向排列。
+- 坐标单位为 m。
+- `frame_id` 当前固定为 `map`。
+- 每个坐标都必须是有限数值。
 
 ### `ego`
-
-自车初始状态：
 
 ```yaml
 ego:
@@ -116,54 +157,46 @@ ego:
   state: CRUISING
 ```
 
-字段含义：
+| Field | Meaning | Unit |
+|---|---|---|
+| `x`, `y` | 初始位置 | m |
+| `yaw` | 初始航向角，逆时针为正 | rad |
+| `v` | 初始速度 | m/s |
+| `a` | 初始加速度 | m/s² |
+| `state` | 初始运行状态，当前只接收 `CRUISING` | - |
 
-```text
-x, y     初始位置，单位 meter
-yaw      初始航向角，单位 rad
-v        初始速度，单位 m/s
-a        初始加速度，单位 m/s^2
-state    自车状态，第一版可用 CRUISING / EMERGENCY / INIT / STANDBY
-```
+## `obstacles`
 
-### `obstacles`
-
-障碍物列表。无障碍场景使用空列表：
+无障碍场景必须保留显式空列表：
 
 ```yaml
 obstacles: []
 ```
 
-静态障碍物示例：
+静态障碍物使用矩形包围盒表示：
 
 ```yaml
 obstacles:
   - id: 1
-    type: static
-    x: 18.0
+    x: 20.0
     y: 0.0
-    yaw: 0.0
+    heading: 0.0
     length: 4.5
     width: 2.0
-    vx: 0.0
-    vy: 0.0
 ```
 
-字段含义：
+| Field | Meaning | Constraint |
+|---|---|---|
+| `id` | 场景内的障碍物编号 | 非负且唯一 |
+| `x`, `y` | 矩形中心位置 | 有限数值，单位 m |
+| `heading` | 局部 x 轴相对全局 x 轴的朝向 | 有限数值，单位 rad，逆时针为正 |
+| `length` | 矩形局部 x 方向长度 | 有限且大于 0，单位 m |
+| `width` | 矩形局部 y 方向宽度 | 有限且大于 0，单位 m |
 
-```text
-id        障碍物编号
-type      static 或 dynamic，Phase 3 先只使用 static
-x, y      障碍物中心点位置
-yaw       障碍物朝向角，单位 rad
-length    障碍物长度，单位 meter
-width     障碍物宽度，单位 meter
-vx, vy    障碍物速度，Phase 3 静态障碍物使用 0.0
-```
+障碍物使用 `route.frame_id`，不为每个障碍物重复保存坐标系。v0.2 全部视为静态障碍物，
+因此不保存 `type`、`vx` 或 `vy`。
 
-### `expected`
-
-期望结果和基础指标阈值：
+## `expected`
 
 ```yaml
 expected:
@@ -176,44 +209,26 @@ expected:
   timeout_sec: 10.0
 ```
 
-字段含义：
+| Field | Meaning |
+|---|---|
+| `success` | 是否期望场景正常运行或规划成功 |
+| `collision_free` | 是否要求无碰撞 |
+| `reach_goal` | 是否要求到达路线终点 |
+| `max_abs_l` | 最大允许横向偏移，单位 m |
+| `max_acc` | 最大允许加速度，单位 m/s² |
+| `max_decel` | 最大允许减速度绝对值，单位 m/s² |
+| `timeout_sec` | 最大运行时间，单位 s |
 
-```text
-success          期望场景能够正常运行或规划成功
-collision_free   期望无碰撞
-reach_goal       是否要求到达终点，早期巡航场景可为 false
-max_abs_l        最大允许横向偏差，单位 meter
-max_acc          最大允许加速度，单位 m/s^2
-max_decel        最大允许减速度绝对值，单位 m/s^2
-timeout_sec      场景最大运行时间
-```
+这些字段目前仍是人工检查目标，还没有接入自动指标判定。
 
-## 第一批场景
+## 设计边界
 
-Phase 3 第一批只做基础无障碍场景：
+当前 schema 不包含：
 
-```text
-straight_cruise.yaml
-curve_cruise.yaml
-end_of_route.yaml
-```
+- 动态障碍物速度和预测轨迹。
+- 车道、道路边界和交通规则。
+- 信号灯和停止线。
+- 场景重置或批量执行配置。
 
-后续障碍物链路进入 Phase 4 后，再扩展：
-
-```text
-static_obstacle_stop.yaml
-static_obstacle_avoid.yaml
-```
-
-## 设计原则
-
-场景文件必须回答四个问题：
-
-```text
-这个场景验证什么？
-输入路线和自车状态是什么？
-期望结果是什么？
-后续是否能被 runner 自动复现？
-```
-
-如果一个 YAML 只存了几个点，但没有期望结果，它就只是 mock data，不是 scenario。
+一个有效场景至少需要明确输入、预期行为和检查条件。只保存若干路径点而没有预期结果的
+文件属于 mock 数据，不作为场景验证用例。
