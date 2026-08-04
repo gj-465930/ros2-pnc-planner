@@ -11,7 +11,8 @@ namespace pnc_planner::scenario
 {
 
 static std::string CreateTemporaryScenario(
-  const std::string & file_name, const std::string & ego_yaml)
+  const std::string & file_name, const std::string & ego_yaml,
+  const std::string & schema_version = "0.1", const std::string & obstacles_yaml = "[]")
 {
   const std::filesystem::path file_path = std::filesystem::temp_directory_path() / file_name;
 
@@ -21,8 +22,8 @@ static std::string CreateTemporaryScenario(
     throw std::runtime_error("Failed to create temporary scenario file");
   }
 
-  output << R"(schema_version: "0.1"
-name: invalid_ego
+  output << "schema_version: \"" << schema_version << "\"\n"
+         << R"(name: temporary_scenario
 route:
   frame_id: "map"
   points:
@@ -31,8 +32,8 @@ route:
     - [20.0, 0.0]
 ego:
 )" << ego_yaml
+         << "\nobstacles: " << obstacles_yaml << "\n"
          << R"(
-obstacles: []
 expected:
   success: true
 )";
@@ -173,6 +174,207 @@ TEST(ScenarioLoaderTest, RejectsUnsupportedEgoState)
   const std::string error_message = GetLoadErrorMessage(scenario_file);
   std::filesystem::remove(scenario_file);
   EXPECT_NE(error_message.find("Unsupported ego.state: EMERGENCY"), std::string::npos);
+}
+
+TEST(ScenarioLoaderTest, ParsesEmptyObstacleListInSchemaV02)
+{
+  const std::string scenario_file = CreateTemporaryScenario(
+    "pnc_empty_obstacles.yaml",
+    R"(  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 1.0
+  a: 0.0
+  state: CRUISING
+)",
+    "0.2", "[]");
+
+  const auto scenario = ScenarioLoader::LoadFromFile(scenario_file);
+  std::filesystem::remove(scenario_file);
+
+  EXPECT_EQ(scenario.schema_version, "0.2");
+  EXPECT_TRUE(scenario.obstacles.empty());
+}
+
+TEST(ScenarioLoaderTest, ParsesSingleStaticObstacle)
+{
+  const std::string scenario_file = CreateTemporaryScenario(
+    "pnc_single_static_obstacle.yaml",
+    R"(  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 1.0
+  a: 0.0
+  state: CRUISING
+)",
+    "0.2", R"([{id: 7, x: 12.5, y: -1.25, heading: 0.3, length: 4.8, width: 2.0}])");
+
+  const auto scenario = ScenarioLoader::LoadFromFile(scenario_file);
+  std::filesystem::remove(scenario_file);
+
+  ASSERT_EQ(scenario.obstacles.size(), 1U);
+
+  const auto & obstacle = scenario.obstacles[0];
+  EXPECT_EQ(obstacle.id, 7);
+  EXPECT_DOUBLE_EQ(obstacle.x, 12.5);
+  EXPECT_DOUBLE_EQ(obstacle.y, -1.25);
+  EXPECT_DOUBLE_EQ(obstacle.heading, 0.3);
+  EXPECT_DOUBLE_EQ(obstacle.length, 4.8);
+  EXPECT_DOUBLE_EQ(obstacle.width, 2.0);
+}
+
+TEST(ScenarioLoaderTest, PreservesMultipleObstacleOrderAndValues)
+{
+  const std::string scenario_file = CreateTemporaryScenario(
+    "pnc_multiple_static_obstacles.yaml",
+    R"(  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 1.0
+  a: 0.0
+  state: CRUISING
+)",
+    "0.2",
+    R"([{id: 11, x: 8.0, y: 1.5, heading: 0.1, length: 4.0, width: 1.8}, {id: 3, x: 16.0, y: -2.0, heading: -0.2, length: 5.0, width: 2.2}]
+)");
+
+  const auto scenario = ScenarioLoader::LoadFromFile(scenario_file);
+  std::filesystem::remove(scenario_file);
+
+  ASSERT_EQ(scenario.obstacles.size(), 2U);
+
+  const auto & first = scenario.obstacles[0];
+  EXPECT_EQ(first.id, 11);
+  EXPECT_DOUBLE_EQ(first.x, 8.0);
+  EXPECT_DOUBLE_EQ(first.y, 1.5);
+  EXPECT_DOUBLE_EQ(first.heading, 0.1);
+  EXPECT_DOUBLE_EQ(first.length, 4.0);
+  EXPECT_DOUBLE_EQ(first.width, 1.8);
+
+  const auto & second = scenario.obstacles[1];
+  EXPECT_EQ(second.id, 3);
+  EXPECT_DOUBLE_EQ(second.x, 16.0);
+  EXPECT_DOUBLE_EQ(second.y, -2.0);
+  EXPECT_DOUBLE_EQ(second.heading, -0.2);
+  EXPECT_DOUBLE_EQ(second.length, 5.0);
+  EXPECT_DOUBLE_EQ(second.width, 2.2);
+}
+
+TEST(ScenarioLoaderTest, RejectsNonPositiveObstacleLength)
+{
+  const std::string scenario_file = CreateTemporaryScenario(
+    "pnc_non_positive_obstacle_length.yaml",
+    R"(  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 1.0
+  a: 0.0
+  state: CRUISING
+)",
+    "0.2", R"([{id: 1, x: 10.0, y: 0.0, heading: 0.0, length: 0.0, width: 2.0}])");
+
+  const std::string error_message = GetLoadErrorMessage(scenario_file);
+  std::filesystem::remove(scenario_file);
+
+  EXPECT_NE(
+    error_message.find("obstacles[0].length must be finite and greater than 0"), std::string::npos);
+}
+
+TEST(ScenarioLoaderTest, RejectsNonPositiveObstacleWidth)
+{
+  const std::string scenario_file = CreateTemporaryScenario(
+    "pnc_non_positive_obstacle_width.yaml",
+    R"(  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 1.0
+  a: 0.0
+  state: CRUISING
+)",
+    "0.2", R"([{id: 1, x: 10.0, y: 0.0, heading: 0.0, length: 4.0, width: -1.0}])");
+
+  const std::string error_message = GetLoadErrorMessage(scenario_file);
+  std::filesystem::remove(scenario_file);
+
+  EXPECT_NE(
+    error_message.find("obstacles[0].width must be finite and greater than 0"), std::string::npos);
+}
+
+TEST(ScenarioLoaderTest, RejectsDuplicateObstacleId)
+{
+  const std::string scenario_file = CreateTemporaryScenario(
+    "pnc_duplicate_obstacle_id.yaml",
+    R"(  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 1.0
+  a: 0.0
+  state: CRUISING
+)",
+    "0.2",
+    R"([{id: 1, x: 8.0, y: 1.5, heading: 0.1, length: 4.0, width: 1.8}, {id: 1, x: 16.0, y: -2.0, heading: -0.2, length: 5.0, width: 2.2}])");
+
+  const std::string error_message = GetLoadErrorMessage(scenario_file);
+  std::filesystem::remove(scenario_file);
+
+  EXPECT_NE(error_message.find("Duplicate obstacle id: 1"), std::string::npos);
+}
+
+TEST(ScenarioLoaderTest, RejectsMissingObstacleField)
+{
+  const std::string scenario_file = CreateTemporaryScenario(
+    "pnc_missing_obstacle_heading.yaml",
+    R"(  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 1.0
+  a: 0.0
+  state: CRUISING
+)",
+    "0.2", R"([{id: 1, x: 10.0, y: 0.0, length: 4.0, width: 2.0}])");
+
+  const std::string error_message = GetLoadErrorMessage(scenario_file);
+  std::filesystem::remove(scenario_file);
+
+  EXPECT_NE(error_message.find("Missing or invalid 'obstacles[0].heading'"), std::string::npos);
+}
+
+TEST(ScenarioLoaderTest, RejectsNonFiniteObstacleValue)
+{
+  const std::string scenario_file = CreateTemporaryScenario(
+    "pnc_non_finite_obstacle_value.yaml",
+    R"(  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 1.0
+  a: 0.0
+  state: CRUISING
+)",
+    "0.2", R"([{id: 1, x: .nan, y: 0.0, heading: 0.0, length: 4.0, width: 2.0}])");
+
+  const std::string error_message = GetLoadErrorMessage(scenario_file);
+  std::filesystem::remove(scenario_file);
+
+  EXPECT_NE(error_message.find("obstacles[0].x must be finite"), std::string::npos);
+}
+
+TEST(ScenarioLoaderTest, RejectsNegativeObstacleId)
+{
+  const std::string scenario_file = CreateTemporaryScenario(
+    "pnc_negative_obstacle_id.yaml",
+    R"(  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 1.0
+  a: 0.0
+  state: CRUISING
+)",
+    "0.2", R"([{id: -1, x: 10.0, y: 0.0, heading: 0.0, length: 4.0, width: 2.0}])");
+
+  const std::string error_message = GetLoadErrorMessage(scenario_file);
+  std::filesystem::remove(scenario_file);
+
+  EXPECT_NE(error_message.find("obstacles[0].id must be non-negative"), std::string::npos);
 }
 
 }  // namespace

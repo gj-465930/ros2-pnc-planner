@@ -3,8 +3,10 @@
 #include <yaml-cpp/yaml.h>
 
 #include <cmath>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 namespace pnc_planner::scenario
 {
@@ -37,7 +39,7 @@ ScenarioData ScenarioLoader::LoadFromFile(const std::string & scenario_file_path
 
     const std::string schema_version = schema_version_node.as<std::string>();
 
-    if (schema_version != "0.1") {
+    if (schema_version != "0.1" && schema_version != "0.2") {
       throw std::runtime_error("Unsupported schema version: " + schema_version);
     }
     scenario_data.schema_version = schema_version;
@@ -175,8 +177,69 @@ ScenarioData ScenarioLoader::LoadFromFile(const std::string & scenario_file_path
       throw std::runtime_error("Missing or invalid 'obstacles'");
     }
 
-    if (obstacles_node.size() != 0U) {
+    if (schema_version == "0.1" && obstacles_node.size() != 0U) {
       throw std::runtime_error("Non-empty obstacles are not supported in scenario schema v0.1");
+    }
+
+    if (schema_version == "0.2") {
+      scenario_data.obstacles.reserve(obstacles_node.size());
+
+      std::unordered_set<std::int32_t> obstacle_ids;
+
+      for (std::size_t index = 0; index < obstacles_node.size(); ++index) {
+        const YAML::Node obstacle_node = obstacles_node[index];
+        const std::string context = "obstacles[" + std::to_string(index) + "]";
+
+        if (!obstacle_node.IsMap()) {
+          throw std::runtime_error(context + " must be a YAML map");
+        }
+
+        const auto require_scalar = [&obstacle_node, &context](const std::string & field) {
+          const YAML::Node field_node = obstacle_node[field];
+          if (!field_node || !field_node.IsScalar()) {
+            throw std::runtime_error("Missing or invalid '" + context + "." + field + "'");
+          }
+
+          return field_node;
+        };
+
+        const std::int32_t id = require_scalar("id").as<std::int32_t>();
+        const double x = require_scalar("x").as<double>();
+        const double y = require_scalar("y").as<double>();
+        const double heading = require_scalar("heading").as<double>();
+        const double length = require_scalar("length").as<double>();
+        const double width = require_scalar("width").as<double>();
+
+        if (id < 0) {
+          throw std::runtime_error(context + ".id must be non-negative");
+        }
+
+        if (!obstacle_ids.insert(id).second) {
+          throw std::runtime_error("Duplicate obstacle id: " + std::to_string(id));
+        }
+
+        if (!std::isfinite(x)) {
+          throw std::runtime_error(context + ".x must be finite");
+        }
+
+        if (!std::isfinite(y)) {
+          throw std::runtime_error(context + ".y must be finite");
+        }
+
+        if (!std::isfinite(heading)) {
+          throw std::runtime_error(context + ".heading must be finite");
+        }
+
+        if (!std::isfinite(length) || length <= 0.0) {
+          throw std::runtime_error(context + ".length must be finite and greater than 0");
+        }
+
+        if (!std::isfinite(width) || width <= 0.0) {
+          throw std::runtime_error(context + ".width must be finite and greater than 0");
+        }
+
+        scenario_data.obstacles.push_back(StaticObstacle{id, x, y, heading, length, width});
+      }
     }
 
     const YAML::Node expected_node = root["expected"];
