@@ -7,6 +7,8 @@
 #include "nav_msgs/msg/path.hpp"
 
 #include <cmath>
+#include <cstdint>
+#include <unordered_set>
 
 namespace pnc_planner
 {
@@ -106,6 +108,10 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
       route_ready_ = true;
       initial_state_ready_ = true;
 
+      obstacle_array_.header.frame_id = "map";
+      obstacle_array_.obstacles.clear();
+      obstacles_ready_ = true;
+
       RCLCPP_INFO(
         this->get_logger(), "Initialized mock inputs: x=%.2f, y=%.2f, yaw=%.2f, v=%.2f, a=%.2f", x,
         y, yaw, v, a);
@@ -133,13 +139,19 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
       this->initialStateCallback(msg);
     });
 
+  obstacle_array_sub_ = this->create_subscription<pnc_planner::msg::ObstacleArray>(
+    "/scenario/obstacles", scenario_qos,
+    [this](const pnc_planner::msg::ObstacleArray::ConstSharedPtr & msg) {
+      this->obstacleArrayCallback(msg);
+    });
+
   timer_ =
     this->create_wall_timer(std::chrono::milliseconds(100), [this]() { this->timerCallback(); });
 }
 
 void PncPlannerNode::timerCallback()
 {
-  if (!route_ready_ || !initial_state_ready_) {
+  if (!route_ready_ || !initial_state_ready_ || !obstacles_ready_) {
     return;
   }
 
@@ -361,7 +373,7 @@ void PncPlannerNode::initialStateCallback(
 
 void PncPlannerNode::logScenarioReadyIfComplete()
 {
-  if (!route_ready_ || !initial_state_ready_ || scenario_ready_logged_) {
+  if (!route_ready_ || !initial_state_ready_ || !obstacles_ready_ || scenario_ready_logged_) {
     return;
   }
 
@@ -370,6 +382,69 @@ void PncPlannerNode::logScenarioReadyIfComplete()
     this->get_logger(),
     "Scenario inputs are complete; starting planning. "
     "Restart planner to switch scenarios.");
+}
+
+void PncPlannerNode::obstacleArrayCallback(const pnc_planner::msg::ObstacleArray::ConstSharedPtr & msg)
+{
+  if (use_mock_routing_) {
+    RCLCPP_WARN_ONCE(
+      this->get_logger(), "Ignoring /scenario/obstacles because mock routing mode is enabled");
+    return;
+  }
+
+  if (obstacles_ready_) {
+    RCLCPP_WARN_ONCE(
+      this->get_logger(),
+      "Ignoring repeated /scenario/obstacles. "
+      "Restart planner to switch scenarios.");
+    return;
+  }
+
+  // 数据合法性校验
+  if (msg->header.frame_id != "map") {
+    RCLCPP_ERROR(
+      this->get_logger(), "Rejected /scenario/obstacles: frame_id must be 'map', got '%s'",
+      msg->header.frame_id.c_str());
+    return;
+  }
+
+  std::unordered_set<std::int32_t> obstacle_ids;
+
+  for (std::size_t index = 0; index < msg->obstacles.size(); ++index) {
+    const auto & obstacle = msg->obstacles[index];
+
+    if (obstacle.id < 0) {
+      RCLCPP_ERROR(
+        this->get_logger(), "Rejected /scenario/obstacles: obstacle[%zu].id must be non-negative",
+        index);
+      return;
+    }
+
+    if (!obstacle_ids.insert(obstacle.id).second) {
+      RCLCPP_ERROR(
+        this->get_logger(), "Rejected /scenario/obstacles: duplicate obstacle id %d", obstacle.id);
+      return;
+    }
+
+    const bool numeric_values_valid =
+      std::isfinite(obstacle.x) && std::isfinite(obstacle.y) && std::isfinite(obstacle.heading) &&
+      std::isfinite(obstacle.length) && std::isfinite(obstacle.width) && obstacle.width > 0.0 &&
+      obstacle.length > 0.0;
+
+    if (!numeric_values_valid) {
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "Rejected /scenario/obstacles: obstacle[%zu] has invalid numeric values", index);
+      return;
+    }
+  }
+
+  obstacle_array_ = *msg;
+  obstacles_ready_ = true;
+  RCLCPP_INFO(
+    this->get_logger(), "Accepted %zu static obstacles", obstacle_array_.obstacles.size());
+
+  logScenarioReadyIfComplete();
 }
 
 }  // namespace pnc_planner

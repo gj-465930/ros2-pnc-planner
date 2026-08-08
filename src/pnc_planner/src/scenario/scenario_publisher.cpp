@@ -1,3 +1,4 @@
+#include "pnc_planner/msg/obstacle_array.hpp"
 #include "pnc_planner/msg/scenario_initial_state.hpp"
 #include "pnc_planner/scenario/scenario_loader.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -33,6 +34,9 @@ public:
     initial_state_publisher_ = this->create_publisher<pnc_planner::msg::ScenarioInitialState>(
       "/scenario/initial_state", scenario_qos);
 
+    obstacle_array_publisher_ =
+      this->create_publisher<pnc_planner::msg::ObstacleArray>("/scenario/obstacles", scenario_qos);
+
     publisher_timer_ = this->create_wall_timer(
       std::chrono::milliseconds(200), [this]() { this->TryPublishScenario(); });
 
@@ -47,6 +51,7 @@ private:
   ScenarioData scenario_data_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr route_publisher_;
   rclcpp::Publisher<pnc_planner::msg::ScenarioInitialState>::SharedPtr initial_state_publisher_;
+  rclcpp::Publisher<pnc_planner::msg::ObstacleArray>::SharedPtr obstacle_array_publisher_;
   rclcpp::TimerBase::SharedPtr publisher_timer_;
   bool scenario_published_{false};
 };
@@ -88,15 +93,34 @@ void ScenarioPublisher::TryPublishScenario()
   initial_state.yaw = scenario_data_.ego.yaw;
   initial_state.state = scenario_data_.ego.state;
 
+  pnc_planner::msg::ObstacleArray obstacle_array;
+  obstacle_array.header.stamp = stamp;
+  obstacle_array.header.frame_id = scenario_data_.route.frame_id;
+
+  obstacle_array.obstacles.reserve(scenario_data_.obstacles.size());
+
+  for (const auto & source_obstacle : scenario_data_.obstacles) {
+    auto & obstacle = obstacle_array.obstacles.emplace_back();
+
+    obstacle.id = source_obstacle.id;
+    obstacle.x = source_obstacle.x;
+    obstacle.y = source_obstacle.y;
+    obstacle.heading = source_obstacle.heading;
+    obstacle.length = source_obstacle.length;
+    obstacle.width = source_obstacle.width;
+  }
+
   route_publisher_->publish(route_path);
   initial_state_publisher_->publish(initial_state);
+  obstacle_array_publisher_->publish(obstacle_array);
 
   scenario_published_ = true;
   publisher_timer_->cancel();
 
   RCLCPP_INFO(
-    this->get_logger(), "Published scenario '%s' to /routing_path and /scenario/initial_state",
-    scenario_data_.name.c_str());
+    this->get_logger(), "Published scenario '%s' with %zu route points and %zu obstacles",
+    scenario_data_.name.c_str(), scenario_data_.route.points.size(),
+    scenario_data_.obstacles.size());
 }
 
 }  // namespace pnc_planner::scenario
