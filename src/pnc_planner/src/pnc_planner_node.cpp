@@ -123,7 +123,10 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   longitudinal_controller_ = std::make_unique<controller::PidController>(
     2.0, 0.1, 0.05, 0.1, 3.0, config.max_acc, config.min_acc);
 
-  visualizer_ = std::make_shared<Visualizer>(this);
+  visualizer_ = std::make_shared<Visualizer>(*this);
+  if (obstacles_ready_) {
+    visualizer_->publishStaticObstacles(obstacle_array_);
+  }
 
   rclcpp::QoS scenario_qos(rclcpp::KeepLast(1));
   scenario_qos.reliable();
@@ -441,6 +444,8 @@ void PncPlannerNode::obstacleArrayCallback(const pnc_planner::msg::ObstacleArray
 
   obstacle_array_ = *msg;
   obstacles_ready_ = true;
+  visualizer_->publishStaticObstacles(obstacle_array_);
+
   RCLCPP_INFO(
     this->get_logger(), "Accepted %zu static obstacles", obstacle_array_.obstacles.size());
 
