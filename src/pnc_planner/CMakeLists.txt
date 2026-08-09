@@ -19,6 +19,8 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
     "msg/ScenarioInitialState.msg"
+    "msg/Obstacle.msg"
+    "msg/ObstacleArray.msg"
     DEPENDENCIES std_msgs
 )
 
