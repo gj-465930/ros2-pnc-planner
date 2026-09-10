@@ -110,6 +110,9 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 
       obstacle_array_.header.frame_id = "map";
       obstacle_array_.obstacles.clear();
+
+      updatePlannerObstacles(obstacle_array_);
+
       obstacles_ready_ = true;
 
       RCLCPP_INFO(
@@ -443,6 +446,7 @@ void PncPlannerNode::obstacleArrayCallback(const pnc_planner::msg::ObstacleArray
   }
 
   obstacle_array_ = *msg;
+  updatePlannerObstacles(obstacle_array_);
   obstacles_ready_ = true;
   visualizer_->publishStaticObstacles(obstacle_array_);
 
@@ -450,6 +454,26 @@ void PncPlannerNode::obstacleArrayCallback(const pnc_planner::msg::ObstacleArray
     this->get_logger(), "Accepted %zu static obstacles", obstacle_array_.obstacles.size());
 
   logScenarioReadyIfComplete();
+}
+
+void PncPlannerNode::updatePlannerObstacles(const pnc_planner::msg::ObstacleArray & obstacle_array)
+{
+  std::vector<Obstacle> planner_obstacles;
+  planner_obstacles.reserve(obstacle_array.obstacles.size());
+
+  for (const auto & source_obstacle : obstacle_array.obstacles) {
+    Obstacle planner_obstacle;
+
+    planner_obstacle.x = source_obstacle.x;
+    planner_obstacle.y = source_obstacle.y;
+    planner_obstacle.heading = source_obstacle.heading;
+    planner_obstacle.length = source_obstacle.length;
+    planner_obstacle.width = source_obstacle.width;
+
+    planner_obstacles.push_back(planner_obstacle);
+  }
+
+  lattice_planner_->setObstacles(planner_obstacles);
 }
 
 }  // namespace pnc_planner

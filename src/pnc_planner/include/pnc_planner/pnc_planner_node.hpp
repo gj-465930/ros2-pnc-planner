@@ -35,6 +35,7 @@ private:
   void initialStateCallback(const pnc_planner::msg::ScenarioInitialState::ConstSharedPtr & msg);
   void obstacleArrayCallback(const pnc_planner::msg::ObstacleArray::ConstSharedPtr & msg);
   void logScenarioReadyIfComplete();
+  void updatePlannerObstacles(const pnc_planner::msg::ObstacleArray & obstacle_array);
 
   Trajectory planned_traj_;
   pnc_planner::msg::ObstacleArray obstacle_array_;

@@ -9,6 +9,8 @@
  *
  */
 
+#pragma once
+
 #include "pnc_planner/common.hpp"
 #include "pnc_planner/math/quintic_polynomial.hpp"
 #include "pnc_planner/planner_base.hpp"
@@ -30,8 +32,9 @@ public:
     return "LatticePlanner";
   }
 
-  void setObstacles(const std::vector<Obstacle>& Obstacle){
-    obstacles_ = Obstacle;
+  void setObstacles(const std::vector<Obstacle> & obstacles)
+  {
+    obstacles_ = obstacles;
   }
 
 private:

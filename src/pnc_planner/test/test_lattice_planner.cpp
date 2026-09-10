@@ -2,8 +2,8 @@
 #include "pnc_planner/lattice_planner.hpp"
 #include "pnc_planner/reference_line.hpp"
 
-#include <vector>
 #include <cmath>
+#include <vector>
 
 namespace
 {
@@ -109,6 +109,104 @@ TEST(LatticePlannerTest, ClearsOutputTrajectoryWhenPlanningFails)
 
   ASSERT_FALSE(flag);
   EXPECT_TRUE(trajectory.empty());
+}
+
+TEST(LatticePlannerTest, FarObstacleDoesNotAffectPlanning)
+{
+  const auto ref_line = CreateStraightReferenceLine();
+  auto ego = CreateCruisingEgo();
+  const auto config = CreatePlannerConfig();
+
+  pnc_planner::LatticePlanner planner(config);
+
+  pnc_planner::Obstacle obstacle;
+  obstacle.x = 100.0;
+  obstacle.y = 0.0;
+  obstacle.length = 2.0;
+  obstacle.width = 1.0;
+  obstacle.heading = 0.0;
+
+  planner.setObstacles({obstacle});
+
+  pnc_planner::Trajectory trajectory;
+  const bool success = planner.plan(ego, ref_line, trajectory);
+  ASSERT_TRUE(success);
+  ASSERT_FALSE(trajectory.empty());
+}
+
+TEST(LatticePlannerTest, BlockingObstacleCausesPlanningFailureAndClearsOutput)
+{
+  const auto ref_line = CreateStraightReferenceLine();
+  auto ego = CreateCruisingEgo();
+  const auto config = CreatePlannerConfig();
+
+  pnc_planner::LatticePlanner planner(config);
+
+  pnc_planner::Obstacle obstacle;
+  obstacle.x = 5.0;
+  obstacle.y = 0.0;
+  obstacle.length = 8.0;
+  obstacle.width = 4.0;
+  obstacle.heading = 0.0;
+
+  planner.setObstacles({obstacle});
+
+  pnc_planner::Trajectory trajectory;
+
+  pnc_planner::TrajectoryPoint stale_point;
+  stale_point.x = 100.0;
+  stale_point.y = 100.0;
+  trajectory.push_back(stale_point);
+
+  ASSERT_FALSE(trajectory.empty());
+
+  const bool planning_success = planner.plan(ego, ref_line, trajectory);
+
+  EXPECT_FALSE(planning_success);
+  EXPECT_TRUE(trajectory.empty());
+}
+
+TEST(LatticePlannerTest, SelectsSafeCandidateAroundObstacle)
+{
+  const auto ref_line = CreateStraightReferenceLine();
+  const auto ego = CreateCruisingEgo();
+
+  auto config = CreatePlannerConfig();
+  config.planning_time = 5.0;
+
+  pnc_planner::LatticePlanner planner(config);
+
+  pnc_planner::Obstacle obstacle;
+  obstacle.x = 15.0;
+  obstacle.y = 0.0;
+  obstacle.length = 1.0;
+  obstacle.width = 1.0;
+  obstacle.heading = 0.0;
+
+  planner.setObstacles({obstacle});
+
+  pnc_planner::Trajectory trajectory;
+  const bool planning_success = planner.plan(ego, ref_line, trajectory);
+
+  ASSERT_TRUE(planning_success);
+  ASSERT_FALSE(trajectory.empty());
+  const double safe_dist = (3.0 + obstacle.length) / 2.0;
+
+  bool has_lateral_offset = false;
+
+  for (const auto & point : trajectory) {
+    const double dx = point.x - obstacle.x;
+    const double dy = point.y - obstacle.y;
+    const double distance = std::sqrt(dx * dx + dy * dy);
+
+    EXPECT_GE(distance, safe_dist - kEps);
+
+    if (std::abs(point.y) > 0.5) {
+      has_lateral_offset = true;
+    }
+  }
+
+  EXPECT_TRUE(has_lateral_offset);
 }
 
 }  // namespace
