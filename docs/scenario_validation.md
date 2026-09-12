@@ -24,12 +24,18 @@ YAML 中的 `collision_free`、`max_abs_l`、`max_acc` 等 `expected` 字段暂�
 
 ## 验证范围
 
-第一批场景均为无障碍物场景：
+基础回归场景均为无障碍物场景：
 
 ```text
 straight_cruise.yaml
 curve_cruise.yaml
 end_of_route.yaml
+```
+
+静态障碍物阻塞场景：
+
+```text
+static_obstacle_blocked.yaml
 ```
 
 主要检查：
@@ -120,6 +126,7 @@ ros2 run tf2_ros tf2_echo map base_link
 | `straight_cruise` | 沿 x 轴生成参考线并稳定跟随 | Pass |
 | `curve_cruise` | 根据 YAML 路线生成缓弯参考线和规划轨迹 | Pass |
 | `end_of_route` | 从 x=16 m、v=3 m/s 启动，在 x=20 m 附近停车 | Partial |
+| `static_obstacle_blocked` | 障碍物阻塞所有当前 Lattice 候选并触发受控减速 | Pass |
 
 ### `straight_cruise`
 
@@ -231,6 +238,61 @@ TF 重跑数据还没有补录，所以 `end_of_route` 仍保持 `Partial`。
 总体状态：`Partial`。场景输入链路已经打通，陈旧轨迹问题已经修复，但正常终点停车尚未
 实现，修复后的完整运行数据也还没有补录。
 
+## `static_obstacle_blocked` 验证记录
+
+场景输入：
+
+```text
+路线：x = 0 m → 20 m → 40 m → 60 m
+ego.x = 0.0 m
+ego.y = 0.0 m
+ego.yaw = 0.0 rad
+ego.v = 5.0 m/s
+ego.a = 0.0 m/s²
+state = CRUISING
+障碍物：id=1，中心 (5.0, 0.0)，length=8.0 m，width=4.0 m，heading=0.0 rad
+planning_failure_fallback_decel = -3.0 m/s²
+```
+
+场景通过 `scenario_publisher` 发布后，`/scenario/obstacles` 中的障碍物数据与 YAML
+一致，RViz 中可以看到位于 `(5.0, 0.0)` 的静态障碍物方块。
+
+节点日志反复出现：
+
+```text
+[LatticePlanner] Fatal: 找不到任何安全的轨迹，需要触发 AEB (紧急制动)!
+Planning failed; cleared stale trajectory and applying fallback decel -3.00
+```
+
+重复日志是因为节点每 100 ms 重新规划一次，而障碍物持续阻塞当前候选集合。它不表示
+程序崩溃，而是每个规划周期都重新进入失败降级路径。
+
+通过 `ros2 run tf2_ros tf2_echo map base_link` 观察到车辆位置最终稳定在：
+
+```text
+Translation: [4.173, 0.000, 0.000]
+```
+
+之后的位置保持不变，说明车辆没有继续跟踪陈旧轨迹。该结果也与简化运动学估算一致：
+
+```text
+d = v² / (2|a|) = 5² / (2×3) ≈ 4.17 m
+```
+
+### 结论
+
+| 检查项 | 结果 | 依据 |
+|---|---|---|
+| 障碍物 YAML 解析与 topic 发布 | Pass | `/scenario/obstacles` 数据与 YAML 一致 |
+| RViz 障碍物位置 | Pass | 障碍物显示在 `(5.0, 0.0)` |
+| 所有候选轨迹被过滤 | Pass | 日志显示找不到安全轨迹 |
+| 陈旧轨迹清除 | Pass | 失败后不再继续跟踪旧轨迹 |
+| fallback 受控减速 | Pass | `tf2_echo` 位置稳定在 x≈4.173 m |
+| 正常障碍物停车规划 | 未实现 | 当前行为是规划失败后的 fallback deceleration |
+
+该场景证明了静态障碍物完全阻塞时的安全降级链路，但不证明已经实现
+`STOP_FOR_OBSTACLE` 或其他正常停车行为。
+
 ## 当前限制
 
 - `expected` 指标还不能自动采集和判定。
@@ -241,6 +303,5 @@ TF 重跑数据还没有补录，所以 `end_of_route` 仍保持 `Partial`。
 - 修复后的 `end_of_route` TF 数据还没有补录。
 - 一个 planner 进程只运行一个场景，切换场景需要重启节点。
 
-下一阶段先打通静态障碍物的 YAML 解析、ROS2 发布、RViz 可视化和 planner 输入。终点停车
-放到后续 Behavior Planner / PlanningTarget 阶段处理，不把 fallback deceleration 当作
-正常停车规划。
+下一阶段验证存在可行横向候选的静态障碍物绕行场景。终点停车放到后续
+Behavior Planner / PlanningTarget 阶段处理，不把 fallback deceleration 当作正常停车规划。

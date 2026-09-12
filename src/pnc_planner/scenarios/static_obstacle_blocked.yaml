@@ -1,0 +1,35 @@
+schema_version: "0.2"
+name: static_obstacle_blocked
+description: Static obstacle blocks all current lattice candidates.
+tags: [static_obstacle, blocked, fallback]
+
+route:
+  frame_id: map
+  points:
+    - [0.0, 0.0]
+    - [20.0, 0.0]
+    - [40.0, 0.0]
+    - [60.0, 0.0]
+
+ego:
+  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 5.0
+  a: 0.0
+  state: CRUISING
+
+obstacles:
+  - id: 1
+    x: 5.0
+    y: 0.0
+    heading: 0.0
+    length: 8.0
+    width: 4.0
+
+expected:
+  success: false
+  collision_free: true
+  reach_goal: false
+  fallback_deceleration: true
+  timeout_sec: 5.0
