@@ -303,5 +303,59 @@ d = v² / (2|a|) = 5² / (2×3) ≈ 4.17 m
 - 修复后的 `end_of_route` TF 数据还没有补录。
 - 一个 planner 进程只运行一个场景，切换场景需要重启节点。
 
-下一阶段验证存在可行横向候选的静态障碍物绕行场景。终点停车放到后续
-Behavior Planner / PlanningTarget 阶段处理，不把 fallback deceleration 当作正常停车规划。
+## `static_obstacle_avoid` 验证记录
+
+场景输入：
+
+```text
+路线：x = 0 m → 20 m → 40 m → 60 m
+ego.x = 0.0 m
+ego.y = 0.0 m
+ego.yaw = 0.0 rad
+ego.v = 5.0 m/s
+ego.a = 0.0 m/s²
+state = CRUISING
+障碍物：id=1，中心 (20.0, 0.0)，length=1.0 m，width=1.0 m，heading=0.0 rad
+planning_time = 5.0 s
+planning_failure_fallback_decel = -3.0 m/s²
+```
+
+通过 `ros2 launch pnc_planner pnc_planner.launch.py` 启动规划节点，并使用
+`static_obstacle_avoid.yaml` 发布场景。节点日志确认：
+
+```text
+初始化参考线成功，总长度为 60.00
+Applied initial state: x=0.00, y=0.00, yaw=0.00, v=5.00, a=0.00, state=CRUISING
+Accepted 1 static obstacles
+Scenario inputs are complete; starting planning.
+```
+
+随后日志出现：
+
+```text
+[LatticePlanner] Fatal: 找不到任何安全的轨迹，需要触发 AEB (紧急制动)!
+Planning failed; cleared stale trajectory and applying fallback decel -3.00
+```
+
+### 结果解释
+
+| 检查项 | 结果 | 依据 |
+|---|---|---|
+| 场景路线和自车初始状态 | Pass | 节点日志中的路线长度、自车状态与 YAML 一致 |
+| 静态障碍物接收 | Pass | 日志显示 `Accepted 1 static obstacles` |
+| 单次规划存在安全横向候选 | Pass | `SelectsSafeCandidateAroundObstacle` gtest 通过 |
+| 闭环绕行 | Fail | 仿真中所有当前候选最终无效，未形成稳定横向绕行 |
+| 规划失败后的旧轨迹清除 | Pass | 日志进入 `cleared stale trajectory` 分支 |
+| fallback 受控减速 | Pass | 日志显示使用 `-3.00 m/s²` fallback deceleration |
+
+该结果不是障碍物消息或碰撞过滤接入失败。当前简化 Lattice 每 0.1 s 重新规划，纵向
+候选时间为 3 s、4 s、5 s。初始阶段较短的中心线候选尚未覆盖 x=20 m 障碍物，因此
+中心候选可能因代价较低而被持续选择；等障碍物进入候选范围时，横向五次多项式已经
+没有足够距离完成横移，左右候选也会被当前安全距离检查过滤。
+
+因此本次验证的结论为 `Partial`：静态障碍物输入、候选碰撞过滤、单次规划横向候选和
+规划失败安全降级均有证据，但当前闭环绕行未通过。后续应单独创建 Lattice 采样、
+障碍物提前触发或横向轨迹保持相关任务，不在本任务内无边界调参。
+
+下一步应为 Lattice 采样、障碍物提前触发或横向轨迹保持创建独立改进任务。终点停车放到
+后续 Behavior Planner / PlanningTarget 阶段处理，不把 fallback deceleration 当作正常停车规划。

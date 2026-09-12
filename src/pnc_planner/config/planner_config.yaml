@@ -9,7 +9,7 @@ pnc_node:
         max_jerk: 4.0
         max_lat_offset: 3.5
         target_speed: 5.0
-        planning_time: 3.0
+        planning_time: 5.0
       weights:
         w_lat: 1.0
         w_lon: 10.0
