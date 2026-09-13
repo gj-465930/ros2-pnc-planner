@@ -1,0 +1,35 @@
+schema_version: "0.2"
+name: static_obstacle_avoid
+description: Static obstacle blocks the center path while lateral candidates remain available.
+tags: [static_obstacle, avoidance, cruise]
+
+route:
+  frame_id: map
+  points:
+    - [0.0, 0.0]
+    - [20.0, 0.0]
+    - [40.0, 0.0]
+    - [60.0, 0.0]
+
+ego:
+  x: 0.0
+  y: 0.0
+  yaw: 0.0
+  v: 5.0
+  a: 0.0
+  state: CRUISING
+
+obstacles:
+  - id: 1
+    x: 20.0
+    y: 0.0
+    heading: 0.0
+    length: 1.0
+    width: 1.0
+
+expected:
+  success: true
+  collision_free: true
+  reach_goal: false
+  lateral_avoidance: true
+  timeout_sec: 8.0
