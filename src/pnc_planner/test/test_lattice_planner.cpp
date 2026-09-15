@@ -5,12 +5,9 @@
 #include <cmath>
 #include <vector>
 
-namespace
-{
-
 constexpr double kEps = 1e-6;
 
-pnc_planner::ReferenceLine CreateStraightReferenceLine()
+static pnc_planner::ReferenceLine CreateStraightReferenceLine()
 {
   pnc_planner::ReferenceLine ref_line;
 
@@ -22,7 +19,7 @@ pnc_planner::ReferenceLine CreateStraightReferenceLine()
   return ref_line;
 }
 
-pnc_planner::VehicleInfo CreateCruisingEgo()
+static pnc_planner::VehicleInfo CreateCruisingEgo()
 {
   pnc_planner::VehicleInfo ego;
 
@@ -36,7 +33,7 @@ pnc_planner::VehicleInfo CreateCruisingEgo()
   return ego;
 }
 
-pnc_planner::LatticePlannerConfig CreatePlannerConfig()
+static pnc_planner::LatticePlannerConfig CreatePlannerConfig()
 {
   pnc_planner::LatticePlannerConfig config;
 
@@ -56,6 +53,8 @@ pnc_planner::LatticePlannerConfig CreatePlannerConfig()
   return config;
 }
 
+namespace
+{
 TEST(LatticePlannerTest, GeneratesTrajectoryOnStraightReferenceLine)
 {
   const auto ref_line = CreateStraightReferenceLine();
@@ -68,6 +67,25 @@ TEST(LatticePlannerTest, GeneratesTrajectoryOnStraightReferenceLine)
   const bool flag = planner.plan(ego, ref_line, trajectory);
   ASSERT_TRUE(flag);
   ASSERT_FALSE(trajectory.empty());
+
+  const auto & debug = planner.getLastDebugInfo();
+  EXPECT_EQ(debug.lateral_candidate_count, 3U);
+  EXPECT_GT(debug.longitudinal_candidate_count, 0U);
+
+  EXPECT_EQ(
+    debug.evaluated_pair_count, debug.valid_pair_count + debug.collision_rejection_count +
+                                  debug.kinematic_rejection_count +
+                                  debug.conversion_rejection_count);
+
+  EXPECT_TRUE(debug.selection_found);
+  EXPECT_EQ(debug.planning_failure_reason, pnc_planner::PlanningFailureReason::NONE);
+
+  EXPECT_NEAR(debug.selected_lateral_target, 0.0, kEps);
+  EXPECT_GT(debug.selected_duration, 0.0);
+  EXPECT_GE(debug.selected_cost, 0.0);
+
+  EXPECT_EQ(
+    debug.evaluated_pair_count, debug.lateral_candidate_count * debug.longitudinal_candidate_count);
 
   EXPECT_NEAR(trajectory.front().x, ego.pose.x, kEps);
   EXPECT_NEAR(trajectory.front().y, ego.pose.y, kEps);
@@ -109,12 +127,22 @@ TEST(LatticePlannerTest, ClearsOutputTrajectoryWhenPlanningFails)
 
   ASSERT_FALSE(flag);
   EXPECT_TRUE(trajectory.empty());
+
+  const auto & debug = planner.getLastDebugInfo();
+
+  EXPECT_EQ(debug.lateral_candidate_count, 3U);
+  EXPECT_EQ(debug.longitudinal_candidate_count, 0U);
+  EXPECT_EQ(debug.evaluated_pair_count, 0U);
+  EXPECT_FALSE(debug.selection_found);
+  EXPECT_EQ(
+    debug.planning_failure_reason,
+    pnc_planner::PlanningFailureReason::LONGITUDINAL_GENERATION_FAILED);
 }
 
 TEST(LatticePlannerTest, FarObstacleDoesNotAffectPlanning)
 {
   const auto ref_line = CreateStraightReferenceLine();
-  auto ego = CreateCruisingEgo();
+  const auto ego = CreateCruisingEgo();
   const auto config = CreatePlannerConfig();
 
   pnc_planner::LatticePlanner planner(config);
@@ -132,12 +160,17 @@ TEST(LatticePlannerTest, FarObstacleDoesNotAffectPlanning)
   const bool success = planner.plan(ego, ref_line, trajectory);
   ASSERT_TRUE(success);
   ASSERT_FALSE(trajectory.empty());
+
+  const auto & debug = planner.getLastDebugInfo();
+  EXPECT_TRUE(debug.selection_found);
+  EXPECT_EQ(debug.collision_rejection_count, 0U);
+  EXPECT_EQ(debug.planning_failure_reason, pnc_planner::PlanningFailureReason::NONE);
 }
 
 TEST(LatticePlannerTest, BlockingObstacleCausesPlanningFailureAndClearsOutput)
 {
   const auto ref_line = CreateStraightReferenceLine();
-  auto ego = CreateCruisingEgo();
+  const auto ego = CreateCruisingEgo();
   const auto config = CreatePlannerConfig();
 
   pnc_planner::LatticePlanner planner(config);
@@ -164,6 +197,17 @@ TEST(LatticePlannerTest, BlockingObstacleCausesPlanningFailureAndClearsOutput)
 
   EXPECT_FALSE(planning_success);
   EXPECT_TRUE(trajectory.empty());
+
+  const auto & debug = planner.getLastDebugInfo();
+  EXPECT_FALSE(debug.selection_found);
+  EXPECT_EQ(debug.planning_failure_reason, pnc_planner::PlanningFailureReason::NO_VALID_TRAJECTORY);
+
+  EXPECT_GT(debug.collision_rejection_count, 0U);
+
+  EXPECT_EQ(
+    debug.evaluated_pair_count, debug.valid_pair_count + debug.collision_rejection_count +
+                                  debug.kinematic_rejection_count +
+                                  debug.conversion_rejection_count);
 }
 
 TEST(LatticePlannerTest, SelectsSafeCandidateAroundObstacle)
@@ -207,6 +251,59 @@ TEST(LatticePlannerTest, SelectsSafeCandidateAroundObstacle)
   }
 
   EXPECT_TRUE(has_lateral_offset);
+}
+
+TEST(LatticePlannerTest, ReportsLateAvoidanceFailureAtCriticalPosition)
+{
+  const auto ref_line = CreateStraightReferenceLine();
+  auto ego = CreateCruisingEgo();
+
+  auto config = CreatePlannerConfig();
+  config.planning_time = 5.0;
+
+  pnc_planner::LatticePlanner planner(config);
+
+  pnc_planner::Obstacle obstacle;
+  obstacle.x = 20.0;
+  obstacle.y = 0.0;
+  obstacle.length = 1.0;
+  obstacle.width = 1.0;
+  obstacle.heading = 0.0;
+
+  planner.setObstacles({obstacle});
+
+  pnc_planner::Trajectory initial_trajectory;
+
+  ASSERT_TRUE(planner.plan(ego, ref_line, initial_trajectory));
+  ASSERT_FALSE(initial_trajectory.empty());
+
+  const auto initial_debug = planner.getLastDebugInfo();
+
+  EXPECT_TRUE(initial_debug.selection_found);
+  EXPECT_NEAR(initial_debug.selected_lateral_target, 0.0, kEps);
+  EXPECT_NEAR(initial_debug.selected_duration, 3.0, kEps);
+  EXPECT_GT(initial_debug.collision_rejection_count, 0U);
+
+  ego.pose.x = 10.0;
+
+  pnc_planner::Trajectory critical_trajectory;
+
+  ASSERT_FALSE(planner.plan(ego, ref_line, critical_trajectory));
+  EXPECT_TRUE(critical_trajectory.empty());
+
+  const auto & critical_debug = planner.getLastDebugInfo();
+
+  EXPECT_FALSE(critical_debug.selection_found);
+  EXPECT_EQ(critical_debug.valid_pair_count, 0U);
+  EXPECT_GT(critical_debug.collision_rejection_count, 0U);
+  EXPECT_EQ(
+    critical_debug.planning_failure_reason,
+    pnc_planner::PlanningFailureReason::NO_VALID_TRAJECTORY);
+
+  EXPECT_EQ(
+    critical_debug.evaluated_pair_count,
+    critical_debug.valid_pair_count + critical_debug.kinematic_rejection_count +
+      critical_debug.conversion_rejection_count + critical_debug.collision_rejection_count);
 }
 
 }  // namespace

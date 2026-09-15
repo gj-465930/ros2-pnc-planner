@@ -15,8 +15,37 @@
 #include "pnc_planner/math/quintic_polynomial.hpp"
 #include "pnc_planner/planner_base.hpp"
 
+#include <cstddef>
+#include <cstdint>
+
 namespace pnc_planner
 {
+
+enum class PlanningFailureReason : std::uint8_t {
+  NONE = 0,
+  LATERAL_GENERATION_FAILED,
+  LONGITUDINAL_GENERATION_FAILED,
+  NO_VALID_TRAJECTORY,
+  OUTPUT_CONVERSION_FAILED
+};
+
+struct LatticePlannerDebugInfo
+{
+  std::size_t lateral_candidate_count = 0;
+  std::size_t longitudinal_candidate_count = 0;
+  std::size_t evaluated_pair_count = 0;
+  std::size_t valid_pair_count = 0;
+  std::size_t kinematic_rejection_count = 0;
+  std::size_t conversion_rejection_count = 0;
+  std::size_t collision_rejection_count = 0;
+
+  bool selection_found = false;
+  double selected_lateral_target = 0.0;
+  double selected_duration = 0.0;
+  double selected_cost = 0.0;
+
+  PlanningFailureReason planning_failure_reason = PlanningFailureReason::NONE;
+};
 
 // clang-format off
 class LatticePlanner : public PlannerBase {
@@ -37,50 +66,64 @@ public:
     obstacles_ = obstacles;
   }
 
+  const LatticePlannerDebugInfo & getLastDebugInfo() const
+  {
+    return debug_info_;
+  }
+
 private:
   LatticePlannerConfig config_;
   std::vector<Obstacle> obstacles_;
   const ReferenceLine *ref_line_;
+  LatticePlannerDebugInfo debug_info_;
+
+  enum class TrajectoryValidationResult : std::uint8_t
+  {
+    VALID = 0,
+    KINEMATIC_CONSTRAINT_VIOLATED,
+    COORDINATE_CONVERSION_FAILED,
+    COLLISION
+  };
 
   //生成横向候选轨迹
   std::vector<math::QuinticPolynomial> generate_lateral_trajectories(
     const VehicleInfo& ego,
     const ReferenceLine& ref_line
-  );
+  ) const;
 
   //读取状态机器分发任务
   std::vector<math::QuinticPolynomial> generate_longitudinal_trajectories(
     const VehicleInfo &ego,
     const ReferenceLine &ref_line
-  );
+  ) const;
 
   // 生成巡航加减速轨迹
   std::vector<math::QuinticPolynomial> generate_cruise_trajectories(
     const VehicleInfo &ego,
     const ReferenceLine &ref_line
-  );
+  ) const;
 
   // 生成紧急刹车轨迹
   std::vector<math::QuinticPolynomial> generate_emergency_trajectories(
     const VehicleInfo &ego,
     const ReferenceLine &ref_line
-  );
+  ) const;
 
   std::pair<int, int> evaluate_and_select_best_trajectory(
     const std::vector<math::QuinticPolynomial>& lat_trajs,
     const std::vector<math::QuinticPolynomial>& lon_trajs
   );
   // 碰撞与越界检测
-  bool is_trajectory_valid(
+  TrajectoryValidationResult is_trajectory_valid(
     const math::QuinticPolynomial& lat_traj,
     const math::QuinticPolynomial& lon_traj
-  );
+  ) const;
 
   // 打分
   double calculate_trajectory_cost(
     const math::QuinticPolynomial &lat_traj,
     const math::QuinticPolynomial &lon_traj
-  );
+  ) const;
 
   // 1D转2D
   bool combine_and_transform_to_2d(
