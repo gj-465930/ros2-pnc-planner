@@ -61,12 +61,15 @@ struct LatticePlannerConfig {
   double max_lat_offset = 0.0;
   double target_speed = 0.0;
   double planning_time = 0.0;
+  double terminal_safety_decel = 0.0;
+  double lateral_transition_distance = 0.0;
 
   // weights
   double w_lat = 0.0;
   double w_lon = 0.0;
   double w_offset = 0.0;
   double w_speed = 0.0;
+  double w_lateral_target_change = 0.0;
 };
 
 struct Obstacle {

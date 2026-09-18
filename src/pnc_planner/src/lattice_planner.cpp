@@ -58,6 +58,9 @@ bool LatticePlanner::plan(
     debug_info_.planning_failure_reason = PlanningFailureReason::OUTPUT_CONVERSION_FAILED;
   }
 
+  previous_lateral_target_ = best_lat.evaluate(best_lat.get_T());
+  has_previous_lateral_target_ = true;
+
   return success;
 }
 
@@ -94,11 +97,18 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_lateral_trajectori
   ddl0 = 0.0;
 
   // 纵向探查深度
-  const double curr_v = ego.v;
-  const double planning_time = config_.planning_time;
-  constexpr double min_s = 15.0;
-  const double ref_len = ref_line_->getTotalLength() - s0;
-  double total_s = std::max(min_s, std::min(curr_v * planning_time, ref_len));
+  const double ref_len = ref_line.getTotalLength() - s0;
+  if (ref_len <= 0.0) {
+    return lat_trajs;
+  }
+
+  if (
+    !std::isfinite(config_.lateral_transition_distance) ||
+    config_.lateral_transition_distance <= 0.0) {
+    return lat_trajs;
+  }
+
+  const double total_s = std::min(config_.lateral_transition_distance, ref_len);
 
   for (const double target_l : target_lat_offset) {
     const double l1 = target_l;
@@ -147,19 +157,19 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_cruise_trajectorie
   const std::vector<double> sample_v = {
     cruise_speed - 2.0, cruise_speed - 1.0, cruise_speed, cruise_speed + 1.0, cruise_speed + 2.0};
 
-  const double T = config_.planning_time;
-  const std::vector<double> sample_T = {T - 2.0, T - 1.0, T};
+  const double planning_time = config_.planning_time;
 
-  lon_cruise_trajs.reserve(sample_v.size() * sample_T.size());
+  lon_cruise_trajs.reserve(sample_v.size());
 
-  for (const double t : sample_T) {
-    for (const double v1 : sample_v) {
-      double s1 = s0 + ((v0 + v1) / 2.0) * t;
-      double a1 = 0.0;
+  for (const double v1 : sample_v) {
+    const double s1 = s0 + ((v0 + v1) / 2.0) * planning_time;
+    constexpr double a1 = 0.0;
 
-      if (s1 > ref_line_->getTotalLength()) continue;
-      lon_cruise_trajs.emplace_back(s0, v0, a0, s1, v1, a1, t);
+    if (s1 > ref_line.getTotalLength()) {
+      continue;
     }
+
+    lon_cruise_trajs.emplace_back(s0, v0, a0, s1, v1, a1, planning_time);
   }
   return lon_cruise_trajs;
 }
@@ -240,10 +250,22 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
         case TrajectoryValidationResult::COORDINATE_CONVERSION_FAILED:
           ++debug_info_.conversion_rejection_count;
           continue;
+
+        case TrajectoryValidationResult::UNSAFE_TERMINAL_STATE:
+          ++debug_info_.terminal_safety_rejection_count;
+          continue;
       }
 
-      if (const double current_cost = calculate_trajectory_cost(lat_traj, lon_traj);
-          current_cost < min_cost) {
+      double current_cost = calculate_trajectory_cost(lat_traj, lon_traj);
+      const double lateral_target = lat_traj.evaluate(lat_traj.get_T());
+
+      // 加入偏移权重
+      if (has_previous_lateral_target_) {
+        const double target_change = lateral_target - previous_lateral_target_;
+        current_cost += config_.w_lateral_target_change * target_change * target_change;
+      }
+
+      if (current_cost < min_cost) {
         min_cost = current_cost;
         best_lat_idx = static_cast<int>(i);
         best_lon_idx = static_cast<int>(j);
@@ -262,6 +284,8 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
 LatticePlanner::TrajectoryValidationResult LatticePlanner::is_trajectory_valid(
   const math::QuinticPolynomial & lat_traj, const math::QuinticPolynomial & lon_traj) const
 {
+  constexpr double constraint_tolerance = 1e-6;
+
   const double T = lon_traj.get_T();
   constexpr double dt = 0.1;
 
@@ -273,22 +297,22 @@ LatticePlanner::TrajectoryValidationResult LatticePlanner::is_trajectory_valid(
     const double a = lon_traj.evaluate_dd(t);
     const double jerk = lon_traj.evaluate_ddd(t);
 
-    if (v < config_.min_v || v > config_.max_v) {
+    if (v < config_.min_v - constraint_tolerance || v > config_.max_v + constraint_tolerance) {
       return TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED;
     }
-    if (a < config_.min_acc || a > config_.max_acc) {
+    if (a < config_.min_acc - constraint_tolerance || a > config_.max_acc + constraint_tolerance) {
       return TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED;
     }
-    if (std::abs(jerk) > config_.max_jerk) {
+    if (std::abs(jerk) > config_.max_jerk + constraint_tolerance) {
       return TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED;
     }
 
     // 横向有效性判断
     const double s = lon_traj.evaluate(t);
-    const double ds = std::max(s - s0, 0.0);
-    const double l = lat_traj.evaluate(ds);
+    const double lateral_progress = std::clamp(s - s0, 0.0, lat_traj.get_T());
+    const double l = lat_traj.evaluate(lateral_progress);
 
-    if (std::abs(l) > config_.max_lat_offset) {
+    if (std::abs(l) > config_.max_lat_offset + constraint_tolerance) {
       return TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED;
     }
 
@@ -305,6 +329,56 @@ LatticePlanner::TrajectoryValidationResult LatticePlanner::is_trajectory_valid(
         if (const double safe_dist = (3.0 + obs.length) / 2.0;
             std::sqrt(dx * dx + dy * dy) < safe_dist) {
           return TrajectoryValidationResult::COLLISION;
+        }
+      }
+    }
+  }
+
+  if (!std::isfinite(config_.terminal_safety_decel) || config_.terminal_safety_decel <= 0.0) {
+    return TrajectoryValidationResult::UNSAFE_TERMINAL_STATE;
+  }
+
+  const double terminal_s = lon_traj.evaluate(T);
+  const double terminal_v = std::max(lon_traj.evaluate_d(T), 0.0);
+
+  const double braking_distance = terminal_v * terminal_v / (2.0 * config_.terminal_safety_decel);
+
+  const double terminal_progress = std::clamp(terminal_s - s0, 0.0, lat_traj.get_T());
+  const double terminal_l = lat_traj.evaluate(terminal_progress);
+
+  if (const double available_distance = std::max(ref_line_->getTotalLength() - terminal_s, 0.0);
+      braking_distance > available_distance) {
+    return TrajectoryValidationResult::UNSAFE_TERMINAL_STATE;
+  }
+
+  if (obstacles_.empty()) {
+    return TrajectoryValidationResult::VALID;
+  }
+
+  if (const double checked_distance = braking_distance; checked_distance > 0.0) {
+    constexpr double braking_check_step = 0.1;
+    const auto sample_count =
+      static_cast<std::size_t>(std::ceil(checked_distance / braking_check_step));
+
+    for (std::size_t index = 1; index <= sample_count; ++index) {
+      const double ratio = static_cast<double>(index) / static_cast<double>(sample_count);
+      const double braking_s = terminal_s + checked_distance * ratio;
+
+      double x = 0.0;
+      double y = 0.0;
+
+      if (double yaw_ref = 0.0;
+          !ref_line_->getCartesianPoint(braking_s, terminal_l, x, y, yaw_ref)) {
+        return TrajectoryValidationResult::COORDINATE_CONVERSION_FAILED;
+      }
+
+      for (const auto & obs : obstacles_) {
+        const double dx = x - obs.x;
+        const double dy = y - obs.y;
+
+        if (const double safe_dist = (3.0 + obs.length) / 2.0;
+            std::sqrt(dx * dx + dy * dy) < safe_dist) {
+          return TrajectoryValidationResult::UNSAFE_TERMINAL_STATE;
         }
       }
     }
@@ -340,10 +414,14 @@ double LatticePlanner::calculate_trajectory_cost(
     lon_comfort_cost += (a * a + jerk * jerk);
 
     // 横向
-    const double ds = std::max(s - s0, 0.0);
-    const double l = lat_traj.evaluate(ds);
-    const double ddl = lat_traj.evaluate_dd(ds);
-    const double dddl = lat_traj.evaluate_ddd(ds);
+    // 如果横向的规划距离比纵向的长那么到达目标点朝向一定不是0
+    // 反之如果横向规划距离比纵向规划距离短那么到达目标点的时候ego是直走的
+    const double raw_lateral_progress = std::max(s - s0, 0.0);
+    const bool lateral_motion_complete = raw_lateral_progress >= lat_traj.get_T();
+    const double lateral_progress = std::min(raw_lateral_progress, lat_traj.get_T());
+    const double l = lat_traj.evaluate(lateral_progress);
+    const double ddl = lateral_motion_complete ? 0.0 : lat_traj.evaluate_dd(lateral_progress);
+    const double dddl = lateral_motion_complete ? 0.0 : lat_traj.evaluate_ddd(lateral_progress);
 
     lat_comfort_cost += (ddl * ddl + dddl * dddl);
     lat_offset_cost += (l * l);
@@ -373,12 +451,12 @@ bool LatticePlanner::combine_and_transform_to_2d(
     const double a_lon = best_lon.evaluate_dd(t);
 
     // 获取横向状态
-    double ds = s - s0;
-    if (ds < 0) ds = 0;
-
-    const double l = best_lat.evaluate(ds);
-    const double dl = best_lat.evaluate_d(ds);
-    const double ddl = best_lat.evaluate_dd(ds);
+    const double raw_lateral_progress = std::max(s - s0, 0.0);
+    const double lateral_progress = std::min(raw_lateral_progress, best_lat.get_T());
+    const bool lateral_motion_complete = raw_lateral_progress >= best_lat.get_T();
+    const double l = best_lat.evaluate(lateral_progress);
+    const double dl = lateral_motion_complete ? 0.0 : best_lat.evaluate_d(lateral_progress);
+    const double ddl = lateral_motion_complete ? 0.0 : best_lat.evaluate_dd(lateral_progress);
 
     // yaw为在(x, y)下参考线的偏向角
     double x = 0.0, y = 0.0, yaw_ref = 0.0;

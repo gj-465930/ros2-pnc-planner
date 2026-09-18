@@ -24,12 +24,15 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   declare_parameter("lattice_planner.limits.max_lat_offset", 3.5);
   declare_parameter("lattice_planner.limits.target_speed", 15.0);
   declare_parameter("lattice_planner.limits.planning_time", 5.0);
+  declare_parameter("lattice_planner.limits.terminal_safety_decel", 3.0);
+  declare_parameter("lattice_planner.limits.lateral_transition_distance", 12.0);
   // weights
   declare_parameter("planning_failure_fallback_decel", -3.0);
   declare_parameter("lattice_planner.weights.w_lat", 1.0);
   declare_parameter("lattice_planner.weights.w_lon", 10.0);
   declare_parameter("lattice_planner.weights.w_offset", 0.3);
   declare_parameter("lattice_planner.weights.w_speed", 1.0);
+  declare_parameter("lattice_planner.weights.w_lateral_target_change", 1.0);
 
   // mock_ego
   declare_parameter("mock_ego.x", 0.0);
@@ -48,11 +51,14 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   config.max_lat_offset = get_parameter("lattice_planner.limits.max_lat_offset").as_double();
   config.target_speed = get_parameter("lattice_planner.limits.target_speed").as_double();
   config.planning_time = get_parameter("lattice_planner.limits.planning_time").as_double();
+  config.terminal_safety_decel = get_parameter("lattice_planner.limits.terminal_safety_decel").as_double();
+  config.lateral_transition_distance = get_parameter("lattice_planner.limits.lateral_transition_distance").as_double();
 
   config.w_lat = get_parameter("lattice_planner.weights.w_lat").as_double();
   config.w_lon = get_parameter("lattice_planner.weights.w_lon").as_double();
   config.w_offset = get_parameter("lattice_planner.weights.w_offset").as_double();
   config.w_speed = get_parameter("lattice_planner.weights.w_speed").as_double();
+  config.w_lateral_target_change = get_parameter("lattice_planner.weights.w_lateral_target_change").as_double();
 
   planning_failure_fallback_decel_ = get_parameter("planning_failure_fallback_decel").as_double();
   if (!std::isfinite(planning_failure_fallback_decel_) || planning_failure_fallback_decel_ > 0.0) {
@@ -390,7 +396,8 @@ void PncPlannerNode::logScenarioReadyIfComplete()
     "Restart planner to switch scenarios.");
 }
 
-void PncPlannerNode::obstacleArrayCallback(const pnc_planner::msg::ObstacleArray::ConstSharedPtr & msg)
+void PncPlannerNode::obstacleArrayCallback(
+  const pnc_planner::msg::ObstacleArray::ConstSharedPtr & msg)
 {
   if (use_mock_routing_) {
     RCLCPP_WARN_ONCE(

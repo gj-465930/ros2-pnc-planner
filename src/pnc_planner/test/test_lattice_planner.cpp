@@ -45,12 +45,28 @@ static pnc_planner::LatticePlannerConfig CreatePlannerConfig()
   config.max_lat_offset = 3.5;
   config.target_speed = 5.0;
   config.planning_time = 3.0;
+  config.terminal_safety_decel = 3.0;
+  config.lateral_transition_distance = 12.0;
+
   config.w_lat = 1.0;
   config.w_lon = 10.0;
   config.w_offset = 2.0;
   config.w_speed = 1.0;
+  config.w_lateral_target_change = 1.0;
 
   return config;
+}
+
+static pnc_planner::ReferenceLine CreateLongStraightReferenceLine()
+{
+  pnc_planner::ReferenceLine ref_line;
+
+  const std::vector<double> x = {0.0, 50.0, 100.0};
+  const std::vector<double> y = {0.0, 0.0, 0.0};
+
+  EXPECT_TRUE(ref_line.init(x, y));
+
+  return ref_line;
 }
 
 namespace
@@ -73,9 +89,9 @@ TEST(LatticePlannerTest, GeneratesTrajectoryOnStraightReferenceLine)
   EXPECT_GT(debug.longitudinal_candidate_count, 0U);
 
   EXPECT_EQ(
-    debug.evaluated_pair_count, debug.valid_pair_count + debug.collision_rejection_count +
-                                  debug.kinematic_rejection_count +
-                                  debug.conversion_rejection_count);
+    debug.evaluated_pair_count,
+    debug.valid_pair_count + debug.kinematic_rejection_count + debug.conversion_rejection_count +
+      debug.collision_rejection_count + debug.terminal_safety_rejection_count);
 
   EXPECT_TRUE(debug.selection_found);
   EXPECT_EQ(debug.planning_failure_reason, pnc_planner::PlanningFailureReason::NONE);
@@ -205,9 +221,9 @@ TEST(LatticePlannerTest, BlockingObstacleCausesPlanningFailureAndClearsOutput)
   EXPECT_GT(debug.collision_rejection_count, 0U);
 
   EXPECT_EQ(
-    debug.evaluated_pair_count, debug.valid_pair_count + debug.collision_rejection_count +
-                                  debug.kinematic_rejection_count +
-                                  debug.conversion_rejection_count);
+    debug.evaluated_pair_count,
+    debug.valid_pair_count + debug.kinematic_rejection_count + debug.conversion_rejection_count +
+      debug.collision_rejection_count + debug.terminal_safety_rejection_count);
 }
 
 TEST(LatticePlannerTest, SelectsSafeCandidateAroundObstacle)
@@ -280,11 +296,11 @@ TEST(LatticePlannerTest, ReportsLateAvoidanceFailureAtCriticalPosition)
   const auto initial_debug = planner.getLastDebugInfo();
 
   EXPECT_TRUE(initial_debug.selection_found);
-  EXPECT_NEAR(initial_debug.selected_lateral_target, 0.0, kEps);
-  EXPECT_NEAR(initial_debug.selected_duration, 3.0, kEps);
+  EXPECT_NEAR(std::abs(initial_debug.selected_lateral_target), 3.5, kEps);
+  EXPECT_NEAR(initial_debug.selected_duration, config.planning_time, kEps);
   EXPECT_GT(initial_debug.collision_rejection_count, 0U);
 
-  ego.pose.x = 10.0;
+  ego.pose.x = 14.0;
 
   pnc_planner::Trajectory critical_trajectory;
 
@@ -303,7 +319,168 @@ TEST(LatticePlannerTest, ReportsLateAvoidanceFailureAtCriticalPosition)
   EXPECT_EQ(
     critical_debug.evaluated_pair_count,
     critical_debug.valid_pair_count + critical_debug.kinematic_rejection_count +
-      critical_debug.conversion_rejection_count + critical_debug.collision_rejection_count);
+      critical_debug.conversion_rejection_count + critical_debug.collision_rejection_count +
+      critical_debug.terminal_safety_rejection_count);
 }
 
+TEST(LatticePlannerTest, RejectsUnsafeTerminalStateAndSelectsAvoidance)
+{
+  const auto ref_line = CreateStraightReferenceLine();
+  const auto ego = CreateCruisingEgo();
+
+  auto config = CreatePlannerConfig();
+  config.planning_time = 5.0;
+
+  pnc_planner::LatticePlanner planner(config);
+
+  pnc_planner::Obstacle obstacle;
+  obstacle.x = 23.0;
+  obstacle.y = 0.0;
+  obstacle.length = 1.0;
+  obstacle.width = 1.0;
+  obstacle.heading = 0.0;
+
+  planner.setObstacles({obstacle});
+
+  pnc_planner::Trajectory trajectory;
+
+  ASSERT_TRUE(planner.plan(ego, ref_line, trajectory));
+  ASSERT_FALSE(trajectory.empty());
+
+  const auto & debug = planner.getLastDebugInfo();
+
+  EXPECT_TRUE(debug.selection_found);
+  EXPECT_NEAR(debug.selected_duration, config.planning_time, kEps);
+  EXPECT_GT(debug.collision_rejection_count, 0U);
+
+  EXPECT_GT(debug.terminal_safety_rejection_count, 0U);
+
+  EXPECT_NEAR(std::abs(debug.selected_lateral_target), 3.5, kEps);
+}
+
+TEST(LatticePlannerTest, HoldsLateralTargetAfterLateralProfileEnds)
+{
+  const auto ref_line = CreateStraightReferenceLine();
+  const auto ego = CreateCruisingEgo();
+
+  auto config = CreatePlannerConfig();
+  config.planning_time = 5.0;
+  config.target_speed = 7.0;
+
+  config.w_lat = 0.0;
+  config.w_lon = 0.0;
+  config.w_offset = 0.0;
+  config.w_speed = 1.0;
+
+  pnc_planner::LatticePlanner planner(config);
+
+  pnc_planner::Obstacle obstacle;
+  obstacle.x = 15.0;
+  obstacle.y = 0.0;
+  obstacle.length = 1.0;
+  obstacle.width = 1.0;
+  obstacle.heading = 0.0;
+
+  planner.setObstacles({obstacle});
+
+  pnc_planner::Trajectory trajectory;
+
+  ASSERT_TRUE(planner.plan(ego, ref_line, trajectory));
+  ASSERT_FALSE(trajectory.empty());
+
+  const auto & debug = planner.getLastDebugInfo();
+
+  EXPECT_NEAR(std::abs(debug.selected_lateral_target), 3.5, kEps);
+
+  EXPECT_GT(trajectory.back().x, 25.0);
+  EXPECT_NEAR(trajectory.back().v, 7.0, 1e-3);
+  EXPECT_NEAR(std::abs(trajectory.back().y), 3.5, 1e-3);
+  EXPECT_NEAR(trajectory.back().heading, 0.0, 1e-3);
+  EXPECT_NEAR(trajectory.back().kappa, 0.0, 1e-3);
+}
+
+TEST(LatticePlannerTest, ReplansContinuouslyAroundStaticObstacle)
+{
+  const auto ref_line = CreateLongStraightReferenceLine();
+  auto ego = CreateCruisingEgo();
+
+  auto config = CreatePlannerConfig();
+  config.planning_time = 5.0;
+  config.w_lateral_target_change = 100.0;
+  double avoidance_direction = 0.0;
+
+  pnc_planner::LatticePlanner planner(config);
+
+  pnc_planner::Obstacle obstacle;
+  obstacle.x = 20.0;
+  obstacle.y = 0.0;
+  obstacle.length = 1.0;
+  obstacle.width = 1.0;
+  obstacle.heading = 0.0;
+
+  planner.setObstacles({obstacle});
+
+  constexpr std::size_t max_replan_count = 100;
+  bool passed_obstacle = false;
+  bool formed_lateral_offset = false;
+
+  for (std::size_t iteration = 0; iteration < max_replan_count; ++iteration) {
+    pnc_planner::Trajectory trajectory;
+
+    const bool planning_success = planner.plan(ego, ref_line, trajectory);
+
+    const auto debug = planner.getLastDebugInfo();
+
+    ASSERT_TRUE(planning_success) << "iteration: " << iteration << ", ego_x: " << ego.pose.x
+                                  << ", ego_y: " << ego.pose.y << ", ego_v: " << ego.v
+                                  << ", evaluated: " << debug.evaluated_pair_count
+                                  << ", valid: " << debug.valid_pair_count
+                                  << ", kinematic: " << debug.kinematic_rejection_count
+                                  << ", conversion: " << debug.conversion_rejection_count
+                                  << ", collision: " << debug.collision_rejection_count
+                                  << ", terminal_safety: " << debug.terminal_safety_rejection_count;
+
+    if (const auto & debug_info = planner.getLastDebugInfo();
+        std::abs(debug_info.selected_lateral_target) > kEps) {
+      const double current_direction = std::copysign(1.0, debug_info.selected_lateral_target);
+
+      if (avoidance_direction == 0.0) {
+        avoidance_direction = current_direction;
+      } else {
+        EXPECT_EQ(current_direction, avoidance_direction) << "iteration: " << iteration;
+      }
+    }
+
+    ASSERT_GT(trajectory.size(), 1U) << "iteration: " << iteration;
+
+    const double safe_dist = (3.0 + obstacle.length) / 2.0;
+
+    for (const auto & point : trajectory) {
+      const double dx = point.x - obstacle.x;
+      const double dy = point.y - obstacle.y;
+      const double distance = std::sqrt(dx * dx + dy * dy);
+
+      EXPECT_GE(distance, safe_dist - kEps) << "iteration: " << iteration;
+    }
+
+    const auto & next_state = trajectory[1];
+
+    ego.pose.x = next_state.x;
+    ego.pose.y = next_state.y;
+    ego.pose.yaw = next_state.heading;
+    ego.v = next_state.v;
+    ego.a = next_state.a;
+
+    if (std::abs(ego.pose.y) > 0.5) {
+      formed_lateral_offset = true;
+    }
+
+    if (ego.pose.x > obstacle.x + safe_dist) {
+      passed_obstacle = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(passed_obstacle);
+  EXPECT_TRUE(formed_lateral_offset);
+}
 }  // namespace

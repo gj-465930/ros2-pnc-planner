@@ -10,11 +10,14 @@ pnc_node:
         max_lat_offset: 3.5
         target_speed: 5.0
         planning_time: 5.0
+        terminal_safety_decel: 3.0
+        lateral_transition_distance: 12.0
       weights:
         w_lat: 1.0
         w_lon: 10.0
         w_offset: 2.0
         w_speed: 1.0
+        w_lateral_target_change: 1.0
     use_mock_routing: false
     planning_failure_fallback_decel: -3.0
 

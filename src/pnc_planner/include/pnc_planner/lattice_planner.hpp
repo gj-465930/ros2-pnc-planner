@@ -38,6 +38,7 @@ struct LatticePlannerDebugInfo
   std::size_t kinematic_rejection_count = 0;
   std::size_t conversion_rejection_count = 0;
   std::size_t collision_rejection_count = 0;
+  std::size_t terminal_safety_rejection_count = 0;
 
   bool selection_found = false;
   double selected_lateral_target = 0.0;
@@ -77,12 +78,16 @@ private:
   const ReferenceLine *ref_line_;
   LatticePlannerDebugInfo debug_info_;
 
+  bool has_previous_lateral_target_ = false;
+  double previous_lateral_target_ = 0.0;
+
   enum class TrajectoryValidationResult : std::uint8_t
   {
     VALID = 0,
     KINEMATIC_CONSTRAINT_VIOLATED,
     COORDINATE_CONVERSION_FAILED,
-    COLLISION
+    COLLISION,
+    UNSAFE_TERMINAL_STATE
   };
 
   //生成横向候选轨迹
