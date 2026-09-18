@@ -69,7 +69,7 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_lateral_trajectori
 {
   std::vector<math::QuinticPolynomial> lat_trajs;
 
-  const std::vector<double> target_lat_offset = {3.5, 0, -3.5};
+  const auto & target_lat_offset = config_.lateral_samples;
   lat_trajs.reserve(target_lat_offset.size());
 
   double s0 = 0.0, l0 = 0.0;

@@ -1,6 +1,8 @@
 pnc_node:
   ros__parameters:
     lattice_planner:
+      lateral_samples: [3.5, 0.0, -3.5]
+
       limits:
         max_v: 35.0
         min_v: -0.1

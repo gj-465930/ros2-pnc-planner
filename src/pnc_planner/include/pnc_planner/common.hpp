@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include "geometry_msgs/msg/point.hpp"
 
@@ -70,6 +71,8 @@ struct LatticePlannerConfig {
   double w_offset = 0.0;
   double w_speed = 0.0;
   double w_lateral_target_change = 0.0;
+
+  std::vector<double> lateral_samples = {3.5, 0.0, -3.5};
 };
 
 struct Obstacle {

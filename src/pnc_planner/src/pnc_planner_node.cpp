@@ -8,13 +8,18 @@
 
 #include <cmath>
 #include <cstdint>
+#include <stdexcept>
 #include <unordered_set>
+#include <vector>
 
 namespace pnc_planner
 {
 PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 {
   // 声明参数
+  declare_parameter<std::vector<double>>(
+    "lattice_planner.lateral_samples", std::vector<double>{3.5, 0.0, -3.5});
+
   // limits
   declare_parameter("lattice_planner.limits.max_v", 35.0);
   declare_parameter("lattice_planner.limits.min_v", -0.1);
@@ -43,6 +48,8 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 
   // 读取参数
   LatticePlannerConfig config;
+  config.lateral_samples = get_parameter("lattice_planner.lateral_samples").as_double_array();
+
   config.max_v = get_parameter("lattice_planner.limits.max_v").as_double();
   config.min_v = get_parameter("lattice_planner.limits.min_v").as_double();
   config.max_acc = get_parameter("lattice_planner.limits.max_acc").as_double();
@@ -51,21 +58,65 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   config.max_lat_offset = get_parameter("lattice_planner.limits.max_lat_offset").as_double();
   config.target_speed = get_parameter("lattice_planner.limits.target_speed").as_double();
   config.planning_time = get_parameter("lattice_planner.limits.planning_time").as_double();
-  config.terminal_safety_decel = get_parameter("lattice_planner.limits.terminal_safety_decel").as_double();
-  config.lateral_transition_distance = get_parameter("lattice_planner.limits.lateral_transition_distance").as_double();
+  config.terminal_safety_decel =
+    get_parameter("lattice_planner.limits.terminal_safety_decel").as_double();
+  config.lateral_transition_distance =
+    get_parameter("lattice_planner.limits.lateral_transition_distance").as_double();
 
   config.w_lat = get_parameter("lattice_planner.weights.w_lat").as_double();
   config.w_lon = get_parameter("lattice_planner.weights.w_lon").as_double();
   config.w_offset = get_parameter("lattice_planner.weights.w_offset").as_double();
   config.w_speed = get_parameter("lattice_planner.weights.w_speed").as_double();
-  config.w_lateral_target_change = get_parameter("lattice_planner.weights.w_lateral_target_change").as_double();
+  config.w_lateral_target_change =
+    get_parameter("lattice_planner.weights.w_lateral_target_change").as_double();
 
   planning_failure_fallback_decel_ = get_parameter("planning_failure_fallback_decel").as_double();
+
+  // config.planning_failure_fallback_decel校验
   if (!std::isfinite(planning_failure_fallback_decel_) || planning_failure_fallback_decel_ > 0.0) {
     RCLCPP_WARN(
       this->get_logger(), "Invalid planning_failure_fallback_decel %.2f, using default -3.0",
       planning_failure_fallback_decel_);
     planning_failure_fallback_decel_ = -3.0;
+  }
+
+
+  // config.lateral_samples校验
+  if (config.lateral_samples.empty()) {
+    throw std::runtime_error("lattice_planner.lateral_samples must not be empty");
+  }
+
+  bool contains_zero = false;
+  // ReSharper disable once CppTooWideScope
+  constexpr double kLateralSampleTolerance = 1e-9;
+
+  for (std::size_t index = 0; index < config.lateral_samples.size(); ++index) {
+
+    const double sample = config.lateral_samples[index];
+
+    if (!std::isfinite(sample)) {
+      throw std::runtime_error("lattice_planner.lateral_samples must contain only finite values");
+    }
+
+    if (std::abs(sample) > config.max_lat_offset + kLateralSampleTolerance) {
+      throw std::runtime_error(
+        "lattice_planner.lateral_samples[" + std::to_string(index) +
+        "] exceeds config.max_lat_offset");
+    }
+
+    if (std::abs(sample) <= kLateralSampleTolerance) {
+      contains_zero = true;
+    }
+
+    for (std::size_t previous = 0; previous < index; ++previous) {
+      if (std::abs(sample - config.lateral_samples[previous]) < kLateralSampleTolerance) {
+        throw std::runtime_error("lattice_planner.lateral_samples contains duplicate values");
+      }
+    }
+  }
+  if (!contains_zero) {
+    throw std::runtime_error(
+      "lattice_planner.lateral_samples must contain 0.0");
   }
 
   lattice_planner_ = std::make_shared<LatticePlanner>(config);

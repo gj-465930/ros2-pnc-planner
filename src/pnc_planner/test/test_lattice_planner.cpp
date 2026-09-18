@@ -54,6 +54,8 @@ static pnc_planner::LatticePlannerConfig CreatePlannerConfig()
   config.w_speed = 1.0;
   config.w_lateral_target_change = 1.0;
 
+  config.lateral_samples = {3.5, 0.0, -3.5};
+
   return config;
 }
 
@@ -483,4 +485,22 @@ TEST(LatticePlannerTest, ReplansContinuouslyAroundStaticObstacle)
   EXPECT_TRUE(passed_obstacle);
   EXPECT_TRUE(formed_lateral_offset);
 }
+
+TEST(LatticePlannerTest, UsesConfiguredLateralSamples)
+{
+  const auto ref_line = CreateStraightReferenceLine();
+  const auto ego = CreateCruisingEgo();
+
+  auto config = CreatePlannerConfig();
+  config.lateral_samples = {2.0, 1.0, 0.0, -1.0, -2.0};
+
+  pnc_planner::LatticePlanner planner(config);
+  pnc_planner::Trajectory trajectory;
+
+  ASSERT_TRUE(planner.plan(ego, ref_line, trajectory));
+
+  const auto & debug = planner.getLastDebugInfo();
+  EXPECT_EQ(debug.lateral_candidate_count, 5U);
+}
+
 }  // namespace
