@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <utility>
 
 namespace pnc_planner
 {
@@ -42,10 +43,6 @@ bool LatticePlanner::plan(
 
   if (best_lat_idx < 0 || best_lon_idx < 0) {
     debug_info_.planning_failure_reason = PlanningFailureReason::NO_VALID_TRAJECTORY;
-
-    std::cerr << "[LatticePlanner] Fatal: 找不到任何安全的轨迹，需要触发 AEB "
-                 "(紧急制动)!"
-              << std::endl;
     return false;
   }
 
@@ -236,7 +233,6 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
 
       switch (const auto validation_result = is_trajectory_valid(lat_traj, lon_traj)) {
         case TrajectoryValidationResult::VALID:
-          ++debug_info_.valid_pair_count;
           break;
 
         case TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED:
@@ -255,6 +251,15 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
           ++debug_info_.terminal_safety_rejection_count;
           continue;
       }
+
+      Trajectory candidate_trajectory;
+      if (!combine_and_transform_to_2d(lat_traj, lon_traj, *ref_line_, candidate_trajectory)) {
+        ++debug_info_.conversion_rejection_count;
+        continue;
+      }
+
+      ++debug_info_.valid_pair_count;
+      debug_info_.valid_candidate_trajectories.push_back(std::move(candidate_trajectory));
 
       double current_cost = calculate_trajectory_cost(lat_traj, lon_traj);
       const double lateral_target = lat_traj.evaluate(lat_traj.get_T());

@@ -40,6 +40,8 @@ struct LatticePlannerDebugInfo
   std::size_t collision_rejection_count = 0;
   std::size_t terminal_safety_rejection_count = 0;
 
+  std::vector<Trajectory> valid_candidate_trajectories;
+
   bool selection_found = false;
   double selected_lateral_target = 0.0;
   double selected_duration = 0.0;

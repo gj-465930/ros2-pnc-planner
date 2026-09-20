@@ -42,7 +42,7 @@ static pnc_planner::LatticePlannerConfig CreatePlannerConfig()
   config.max_acc = 3.0;
   config.min_acc = -5.0;
   config.max_jerk = 4.0;
-  config.max_lat_offset = 3.5;
+  config.max_lat_offset = 3.7;
   config.target_speed = 5.0;
   config.planning_time = 3.0;
   config.terminal_safety_decel = 3.0;
@@ -87,6 +87,12 @@ TEST(LatticePlannerTest, GeneratesTrajectoryOnStraightReferenceLine)
   ASSERT_FALSE(trajectory.empty());
 
   const auto & debug = planner.getLastDebugInfo();
+
+  EXPECT_EQ(debug.valid_candidate_trajectories.size(), debug.valid_pair_count);
+  for (const auto & candidate : debug.valid_candidate_trajectories) {
+    EXPECT_FALSE(candidate.empty());
+  }
+
   EXPECT_EQ(debug.lateral_candidate_count, 3U);
   EXPECT_GT(debug.longitudinal_candidate_count, 0U);
 
@@ -217,6 +223,7 @@ TEST(LatticePlannerTest, BlockingObstacleCausesPlanningFailureAndClearsOutput)
   EXPECT_TRUE(trajectory.empty());
 
   const auto & debug = planner.getLastDebugInfo();
+  EXPECT_TRUE(debug.valid_candidate_trajectories.empty());
   EXPECT_FALSE(debug.selection_found);
   EXPECT_EQ(debug.planning_failure_reason, pnc_planner::PlanningFailureReason::NO_VALID_TRAJECTORY);
 
@@ -501,6 +508,44 @@ TEST(LatticePlannerTest, UsesConfiguredLateralSamples)
 
   const auto & debug = planner.getLastDebugInfo();
   EXPECT_EQ(debug.lateral_candidate_count, 5U);
+}
+
+TEST(LatticePlannerTest, ContinuesAvoidanceNearLateralTarget)
+{
+  const auto ref_line = CreateLongStraightReferenceLine();
+
+  auto ego = CreateCruisingEgo();
+  ego.pose.x = 14.13;
+  ego.pose.y = 3.07;
+  ego.pose.yaw = 0.17;
+
+  auto config = CreatePlannerConfig();
+  config.planning_time = 5.0;
+  config.w_lateral_target_change = 100.0;
+
+  pnc_planner::LatticePlanner planner(config);
+
+  pnc_planner::Obstacle obstacle;
+  obstacle.x = 20.0;
+  obstacle.y = 0.0;
+  obstacle.length = 1.0;
+  obstacle.width = 1.0;
+  obstacle.heading = 0.0;
+
+  planner.setObstacles({obstacle});
+
+  pnc_planner::Trajectory trajectory;
+
+  ASSERT_TRUE(planner.plan(ego, ref_line, trajectory));
+
+  ASSERT_FALSE(trajectory.empty());
+
+  const auto & debug = planner.getLastDebugInfo();
+
+  EXPECT_GT(debug.valid_pair_count, 0U);
+  EXPECT_TRUE(debug.selection_found);
+
+  EXPECT_NEAR(debug.selected_lateral_target, 3.5, kEps);
 }
 
 }  // namespace

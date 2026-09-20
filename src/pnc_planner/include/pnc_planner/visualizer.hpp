@@ -27,6 +27,8 @@ public:
 
   void publishTrajectory(const nav_msgs::msg::Path & path) const;
 
+  void publishCandidateTrajectories(const std::vector<Trajectory> & trajectories) const;
+
   void publishStaticObstacles(const pnc_planner::msg::ObstacleArray & obstacles_array) const;
 
 private:
@@ -34,6 +36,7 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr traj_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr candidate_marker_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr obstacle_marker_pub_;
 };
 

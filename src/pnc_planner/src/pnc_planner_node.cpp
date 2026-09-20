@@ -6,6 +6,7 @@
 
 #include "nav_msgs/msg/path.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
@@ -26,7 +27,7 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   declare_parameter("lattice_planner.limits.max_acc", 3.0);
   declare_parameter("lattice_planner.limits.min_acc", -5.0);
   declare_parameter("lattice_planner.limits.max_jerk", 4.0);
-  declare_parameter("lattice_planner.limits.max_lat_offset", 3.5);
+  declare_parameter("lattice_planner.limits.max_lat_offset", 3.7);
   declare_parameter("lattice_planner.limits.target_speed", 15.0);
   declare_parameter("lattice_planner.limits.planning_time", 5.0);
   declare_parameter("lattice_planner.limits.terminal_safety_decel", 3.0);
@@ -37,7 +38,7 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   declare_parameter("lattice_planner.weights.w_lon", 10.0);
   declare_parameter("lattice_planner.weights.w_offset", 0.3);
   declare_parameter("lattice_planner.weights.w_speed", 1.0);
-  declare_parameter("lattice_planner.weights.w_lateral_target_change", 1.0);
+  declare_parameter("lattice_planner.weights.w_lateral_target_change", 100.0);
 
   // mock_ego
   declare_parameter("mock_ego.x", 0.0);
@@ -80,7 +81,6 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
     planning_failure_fallback_decel_ = -3.0;
   }
 
-
   // config.lateral_samples校验
   if (config.lateral_samples.empty()) {
     throw std::runtime_error("lattice_planner.lateral_samples must not be empty");
@@ -91,7 +91,6 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   constexpr double kLateralSampleTolerance = 1e-9;
 
   for (std::size_t index = 0; index < config.lateral_samples.size(); ++index) {
-
     const double sample = config.lateral_samples[index];
 
     if (!std::isfinite(sample)) {
@@ -115,8 +114,7 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
     }
   }
   if (!contains_zero) {
-    throw std::runtime_error(
-      "lattice_planner.lateral_samples must contain 0.0");
+    throw std::runtime_error("lattice_planner.lateral_samples must contain 0.0");
   }
 
   lattice_planner_ = std::make_shared<LatticePlanner>(config);
@@ -218,19 +216,38 @@ void PncPlannerNode::timerCallback()
     return;
   }
 
-  double dt = 0.1;
+  constexpr double dt = 0.1;
 
   // 可视化参考线
   this->publishReferenceLine();
 
   if (ref_line_ == nullptr || ref_line_->getTotalLength() <= 0.0) return;
-  VehicleInfo ego = ego_vehicle_->getVehicleState();
+  const VehicleInfo ego = ego_vehicle_->getVehicleState();
 
   // 规划
   Trajectory candidate_traj;
+
+  // 规划时间计时
+  const auto planning_start = std::chrono::steady_clock::now();
   const bool planning_success = lattice_planner_->plan(ego, *ref_line_, candidate_traj);
+  // 结束计时
+  const auto planning_end = std::chrono::steady_clock::now();
+
+  const double planning_time_ms =
+    std::chrono::duration<double, std::milli>(planning_end - planning_start).count();
+
+  const auto & debug = lattice_planner_->getLastDebugInfo();
+
+  visualizer_->publishCandidateTrajectories(debug.valid_candidate_trajectories);
 
   if (planning_success && !candidate_traj.empty()) {
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000,
+      "Planning succeeded: evaluated=%zu, valid=%zu, selected_l=%.2f, duration=%.2f, cost=%.3f, "
+      "planning_ms=%.3f",
+      debug.evaluated_pair_count, debug.valid_pair_count, debug.selected_lateral_target,
+      debug.selected_duration, debug.selected_cost, planning_time_ms);
+
     planned_traj_ = candidate_traj;
 
     // 轨迹可视化
@@ -244,8 +261,17 @@ void PncPlannerNode::timerCallback()
 
   RCLCPP_WARN_THROTTLE(
     this->get_logger(), *this->get_clock(), 1000,
-    "Planning failed; cleared stale trajectory and applying fallback decel %.2f",
-    planning_failure_fallback_decel_);
+    "Planning failed: ego=(%.2f, %.2f), yaw=%.2f, "
+    "lat=%zu, lon=%zu, evaluated=%zu, valid=%zu, "
+    "kinematic=%zu, conversion=%zu, collision=%zu, "
+    "terminal=%zu; cleared stale trajectory and "
+    "applying fallback decel %.2f, "
+    "planning_ms= %.3f",
+    ego.pose.x, ego.pose.y, ego.pose.yaw, debug.lateral_candidate_count,
+    debug.longitudinal_candidate_count, debug.evaluated_pair_count, debug.valid_pair_count,
+    debug.kinematic_rejection_count, debug.conversion_rejection_count,
+    debug.collision_rejection_count, debug.terminal_safety_rejection_count,
+    planning_failure_fallback_decel_, planning_time_ms);
 
   ego_vehicle_->setCommand(planning_failure_fallback_decel_, 0.0);
   ego_vehicle_->updateState(dt);

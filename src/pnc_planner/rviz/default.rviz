@@ -169,6 +169,18 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /static_obstacle_markers
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /lattice_candidate_markers
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -252,4 +264,4 @@ Window Geometry:
     collapsed: false
   Width: 1200
   X: 214
-  Y: 175
+  Y: 53
