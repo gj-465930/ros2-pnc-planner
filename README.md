@@ -22,6 +22,9 @@
 - PID 纵向控制。
 - 简化自车状态仿真。
 - RViz 中显示参考线、规划轨迹和车辆模型。
+- 支持从 YAML 解析并发布静态障碍物，在 RViz 中显示障碍物和有效 Lattice 候选轨迹。
+- Lattice Planner 可以过滤与静态障碍物碰撞的候选，并在当前简化场景中完成闭环绕行。
+- 提供候选数量、拒绝原因、选中横向目标、代价和单轮规划耗时等运行诊断。
 - 支持外部 `/routing_path` 输入和 YAML 场景路线发布。
 - 支持通过 `/scenario/initial_state` 发布并应用场景自车初始状态。
 - 路线和初始状态均就绪后才启动规划循环。
@@ -42,7 +45,7 @@ ReferenceLine + Spline Interpolation
 Cartesian-Frenet Conversion
         |
         v
-LatticePlanner
+LatticePlanner <--- Static Obstacles
         |
         v
 Trajectory
@@ -144,12 +147,13 @@ colcon test-result --verbose
 QuinticPolynomial 边界条件
 CartesianFrenet 直线参考线坐标转换
 ReferenceLine 初始化、查询和边界处理
-LatticePlanner 无障碍直线 smoke test
-ScenarioLoader 场景 ego 初始状态解析与非法输入检查
+LatticePlanner 基础规划、失败输出契约、静态避障、终端安全和连续重规划
+ScenarioLoader 场景 ego 与静态障碍物解析、校验和非法输入检查
 ```
 
-最近一次已有测试记录（2026-07-27）包含 5 个 gtest target、19 个测试，全部通过，覆盖
-规划成功与失败输出路径。后续修改后仍应以重新执行 `colcon test-result --verbose` 为准。
+最近一次功能 gtest 回归（2026-09-20）全部通过，覆盖基础数学、参考线、场景解析以及
+Lattice Planner 的成功、失败和静态障碍物路径。后续修改后仍应以重新执行
+`colcon test-result --verbose` 为准。
 
 完整质量检查可以不带 `-R '^test_'` 过滤重新运行。它还包含格式、Python 和 XML lint。
 当前仓库存在全局格式规则不一致以及离线 XML schema 问题，因此应将功能 gtest 与完整质量
@@ -176,6 +180,8 @@ docs/scenario_schema.md
 | `straight_cruise` | 直线巡航 | Pass |
 | `curve_cruise` | 缓弯巡航 | Pass |
 | `end_of_route` | 接近路线终点 | Partial：链路通过，终点停车待实现 |
+| `static_obstacle_avoid` | 静态障碍物闭环绕行 | Pass |
+| `static_obstacle_blocked` | 完全阻塞后的安全降级 | Pass |
 
 详细验证记录见：
 
@@ -187,23 +193,22 @@ docs/scenario_validation.md
 
 - 当前项目仍是早期局部规划与控制原型。
 - 当前规划 baseline 是 Lattice Planner，尚未实现完整 EM Planner。
-- 当前已有核心模块基础单元测试，但覆盖范围仍以基础数学、参考线和无障碍 Lattice smoke test 为主。
+- 当前核心测试已覆盖基础数学、参考线、场景解析和静态障碍物 Lattice 规划，但尚未形成系统级自动指标评估。
 - 当前已有 YAML 场景、ScenarioLoader 和 ScenarioPublisher，但 expected 指标仍未自动采集或自动判定。
 - ego 初始状态已经通过 `/scenario/initial_state` 接入 `PncPlannerNode`，但 `state` 字段尚未驱动独立行为状态机。
 - 接近路线终点时尚未生成正常的目标停车轨迹；当前只能在规划失败后通过 fallback deceleration 安全降级。
 - 当前场景生命周期要求切换 YAML 场景前重启 planner，尚未实现 reset 或 batch runner。
-- 障碍物输入、碰撞检测和 RViz 障碍物可视化尚未形成完整闭环。
+- 当前仅支持静态障碍物，碰撞检测仍采用简化距离模型，尚未支持动态障碍物预测。
+- 当前横向采样集合固定且离散，尚未引入独立的行为决策与动态可行域生成。
 - 行为规划尚未独立成单独的 planning layer。
 
 ## 后续计划
 
-- 定义静态障碍物的数据与 ROS2 传输契约。
-- 打通 YAML 障碍物解析、发布、接收、RViz 可视化和 Lattice 碰撞过滤链路。
-- 使用阻塞场景和可绕行场景验证静态障碍物行为，同时保留无障碍场景回归验证。
 - 后续扩展场景 runner 和 metrics，使 `expected` 字段能够自动判定。
 - 在 Behavior/PlanningTarget 层实现正常的目标停车与障碍物停车规划。
 - 增加简单行为规划器和 planning target 抽象。
-- 完善 Lattice baseline 的调试输出、代价分解和运行指标。
+- 继续完善 Lattice baseline 的代价分解和自动运行指标。
+- 增加动态障碍物预测及相应的时空碰撞检查。
 - 在当前 baseline 稳定后扩展最小版本 EM Planner。
 - 增加控制器对比和轨迹跟踪误差指标。
 

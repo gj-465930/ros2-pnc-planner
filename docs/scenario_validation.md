@@ -127,6 +127,7 @@ ros2 run tf2_ros tf2_echo map base_link
 | `curve_cruise` | 根据 YAML 路线生成缓弯参考线和规划轨迹 | Pass |
 | `end_of_route` | 从 x=16 m、v=3 m/s 启动，在 x=20 m 附近停车 | Partial |
 | `static_obstacle_blocked` | 障碍物阻塞所有当前 Lattice 候选并触发受控减速 | Pass |
+| `static_obstacle_avoid` | 提前横移绕过静态障碍物并返回中心线 | Pass |
 
 ### `straight_cruise`
 
@@ -257,15 +258,16 @@ planning_failure_fallback_decel = -3.0 m/s²
 场景通过 `scenario_publisher` 发布后，`/scenario/obstacles` 中的障碍物数据与 YAML
 一致，RViz 中可以看到位于 `(5.0, 0.0)` 的静态障碍物方块。
 
-节点日志反复出现：
+节点节流日志显示：
 
 ```text
-[LatticePlanner] Fatal: 找不到任何安全的轨迹，需要触发 AEB (紧急制动)!
-Planning failed; cleared stale trajectory and applying fallback decel -3.00
+Planning failed: ego=(0.00, 0.00), yaw=0.00, lat=3, lon=5,
+evaluated=15, valid=0, kinematic=0, conversion=0, collision=15,
+terminal=0; cleared stale trajectory and applying fallback decel -3.00
 ```
 
-重复日志是因为节点每 100 ms 重新规划一次，而障碍物持续阻塞当前候选集合。它不表示
-程序崩溃，而是每个规划周期都重新进入失败降级路径。
+节点每 100 ms 重新规划一次，而障碍物持续阻塞当前候选集合。失败摘要使用节流日志，
+最多每秒输出一次；重复进入失败分支不表示程序崩溃。
 
 通过 `ros2 run tf2_ros tf2_echo map base_link` 观察到车辆位置最终稳定在：
 
@@ -302,6 +304,7 @@ d = v² / (2|a|) = 5² / (2×3) ≈ 4.17 m
 - planner 还不能生成正常的终点停车纵向轨迹。
 - 修复后的 `end_of_route` TF 数据还没有补录。
 - 一个 planner 进程只运行一个场景，切换场景需要重启节点。
+- 当前只处理静态障碍物，碰撞检查仍采用简化距离模型。
 
 ## `static_obstacle_avoid` 验证记录
 
@@ -330,32 +333,70 @@ Accepted 1 static obstacles
 Scenario inputs are complete; starting planning.
 ```
 
-随后日志出现：
+复测日期：2026-09-20。
+
+本次复测统一使用以下关键参数：
 
 ```text
-[LatticePlanner] Fatal: 找不到任何安全的轨迹，需要触发 AEB (紧急制动)!
-Planning failed; cleared stale trajectory and applying fallback decel -3.00
+lateral_samples = [3.5, 0.0, -3.5]
+planning_time = 5.0 s
+lateral_transition_distance = 12.0 m
+max_lat_offset = 3.7 m
+w_lateral_target_change = 100.0
 ```
+
+RViz 可以同时观察有效候选轨迹和最终选中轨迹。车辆接近障碍物时，规划日志显示：
+
+```text
+evaluated=15, valid=10, selected_l=3.50, duration=5.00
+```
+
+车辆持续选择同一侧横向候选并完成绕行。通过障碍物后，选择结果恢复为：
+
+```text
+selected_l=0.00
+```
+
+车辆随后回到参考线中心附近。单轮规划耗时约为：
+
+```text
+planning_ms=0.13~0.47
+```
+
+该耗时明显低于 100 ms 的规划周期，没有观察到持续增长。
+
+车辆运行到参考线末端附近时出现：
+
+```text
+ego=(38.69, -0.26), yaw=-0.03
+evaluated=3, valid=0
+collision=0, kinematic=0, terminal=3
+```
+
+此时车辆已经越过位于 x=20 m 的障碍物。规划失败来自参考线末端剩余距离不足，所有
+候选被终端安全检查拒绝，并非绕行失败。随后节点清空旧轨迹并执行 `-3.0 m/s^2`
+fallback deceleration。
 
 ### 结果解释
 
 | 检查项 | 结果 | 依据 |
 |---|---|---|
-| 场景路线和自车初始状态 | Pass | 节点日志中的路线长度、自车状态与 YAML 一致 |
-| 静态障碍物接收 | Pass | 日志显示 `Accepted 1 static obstacles` |
-| 单次规划存在安全横向候选 | Pass | `SelectsSafeCandidateAroundObstacle` gtest 通过 |
-| 闭环绕行 | Fail | 仿真中所有当前候选最终无效，未形成稳定横向绕行 |
-| 规划失败后的旧轨迹清除 | Pass | 日志进入 `cleared stale trajectory` 分支 |
-| fallback 受控减速 | Pass | 日志显示使用 `-3.00 m/s²` fallback deceleration |
+| 场景路线和自车初始状态 | Pass | 节点日志与 YAML 输入一致 |
+| 静态障碍物接收与显示 | Pass | topic 数据和 RViz 位置与 YAML 一致 |
+| 有效候选轨迹可视化 | Pass | RViz 可以观察横向候选及最终轨迹 |
+| 碰撞候选过滤 | Pass | 障碍物进入前视范围后有效候选数量减少 |
+| 横向选择稳定性 | Pass | 绕行期间持续选择 `l=3.5`，未发生左右跳变 |
+| 闭环绕行 | Pass | 车辆纵向越过障碍物后才进入路线末端制动 |
+| 回归中心线 | Pass | 通过障碍物后重新选择 `l=0.0` |
+| 规划耗时 | Pass | 单轮约 `0.13~0.47 ms`，明显低于 100 ms 周期 |
+| 路线末端处理 | Partial | 当前仍通过终端安全拒绝和 fallback 减速停车 |
 
-该结果不是障碍物消息或碰撞过滤接入失败。当前简化 Lattice 每 0.1 s 重新规划，纵向
-候选时间为 3 s、4 s、5 s。初始阶段较短的中心线候选尚未覆盖 x=20 m 障碍物，因此
-中心候选可能因代价较低而被持续选择；等障碍物进入候选范围时，横向五次多项式已经
-没有足够距离完成横移，左右候选也会被当前安全距离检查过滤。
+### 结论
 
-因此本次验证的结论为 `Partial`：静态障碍物输入、候选碰撞过滤、单次规划横向候选和
-规划失败安全降级均有证据，但当前闭环绕行未通过。后续应单独创建 Lattice 采样、
-障碍物提前触发或横向轨迹保持相关任务，不在本任务内无边界调参。
+`static_obstacle_avoid` 已完成真实闭环验证。当前 Lattice baseline 能生成多个横向候选，
+过滤与静态障碍物冲突的组合，并在连续重规划过程中保持绕行方向，车辆通过障碍物后
+回到参考线中心。
 
-下一步应为 Lattice 采样、障碍物提前触发或横向轨迹保持创建独立改进任务。终点停车放到
-后续 Behavior Planner / PlanningTarget 阶段处理，不把 fallback deceleration 当作正常停车规划。
+该结果只证明当前静态场景和简化碰撞模型下的闭环绕行能力，不代表已经具备动态障碍物
+预测、独立行为规划或工业级碰撞检测。路线终点仍未生成正常停车轨迹，fallback
+deceleration 继续作为安全降级手段，而不是正常停车规划。
