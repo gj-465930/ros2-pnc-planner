@@ -143,6 +143,8 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_longitudinal_traje
       return generate_cruise_trajectories(ego, ref_line, target);
 
     case planning::BehaviorState::STOP:
+      return generate_stop_trajectories(ego, ref_line, target);
+
     default:
       return {};
   }
@@ -187,6 +189,78 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_cruise_trajectorie
   return lon_cruise_trajs;
 }
 
+std::vector<math::QuinticPolynomial> LatticePlanner::generate_stop_trajectories(
+  const VehicleInfo & ego, const ReferenceLine & ref_line,
+  const planning::PlanningTarget & target) const
+{
+  std::vector<math::QuinticPolynomial> stop_trajectories;
+
+  if (!target.stop_s.has_value()) {
+    return stop_trajectories;
+  }
+
+  if (!std::isfinite(config_.stop_comfort_decel) || config_.stop_comfort_decel <= 0.0) {
+    return stop_trajectories;
+  }
+
+  if (!std::isfinite(ego.v) || !std::isfinite(ego.a) || ego.v < 0.0) {
+    return stop_trajectories;
+  }
+
+  double ego_s = 0.0;
+  double ego_l = 0.0;
+
+  if (!ref_line.getFrenetPoint(ego.pose.x, ego.pose.y, ego_s, ego_l)) {
+    return stop_trajectories;
+  }
+
+  const double stop_s = *target.stop_s;
+
+  if (stop_s < 0.0 || stop_s > ref_line.getTotalLength()) {
+    return stop_trajectories;
+  }
+
+  constexpr double position_tolerance = 0.1;
+  constexpr double speed_tolerance = 0.1;
+  constexpr double hold_duration = 1.0;
+
+  const double remaining_distance = stop_s - ego_s;
+
+  if (remaining_distance < -position_tolerance) {
+    return stop_trajectories;
+  }
+
+  if (std::abs(remaining_distance) <= position_tolerance) {
+    if (std::abs(ego.v) > speed_tolerance) {
+      return stop_trajectories;
+    }
+
+    stop_trajectories.emplace_back(ego_s, 0.0, 0.0, ego_s, 0.0, 0.0, hold_duration);
+    return stop_trajectories;
+  }
+
+  if (ego.v <= speed_tolerance) {
+    return stop_trajectories;
+  }
+
+  const double deceleration_duration = ego.v / config_.stop_comfort_decel;
+  const double distance_duration = remaining_distance / (ego.v / 2.0);
+  const double base_duration = std::max(deceleration_duration, distance_duration);
+
+  constexpr std::size_t sample_count = 5;
+  constexpr double duration_step = 0.5;
+
+  stop_trajectories.reserve(sample_count);
+
+  for (std::size_t index = 0; index < sample_count; ++index) {
+    const double duration = base_duration + duration_step * static_cast<double>(index);
+
+    stop_trajectories.emplace_back(ego_s, ego.v, ego.a, stop_s, 0.0, 0.0, duration);
+  }
+
+  return stop_trajectories;
+}
+
 std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
   const std::vector<math::QuinticPolynomial> & lat_trajs,
   const std::vector<math::QuinticPolynomial> & lon_trajs, const planning::PlanningTarget & target)
@@ -203,7 +277,7 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
 
       ++debug_info_.evaluated_pair_count;
 
-      switch (const auto validation_result = is_trajectory_valid(lat_traj, lon_traj)) {
+      switch (is_trajectory_valid(lat_traj, lon_traj)) {
         case TrajectoryValidationResult::VALID:
           break;
 
@@ -378,10 +452,20 @@ double LatticePlanner::calculate_trajectory_cost(
   double lat_comfort_cost = 0.0;
   double lat_offset_cost = 0.0;
 
+  const double end_s = lon_traj.evaluate(T);
   const double end_v = lon_traj.evaluate_d(T);
-  const double speed_diff = target.target_speed - end_v;
 
-  total_cost += config_.w_speed * (speed_diff * speed_diff);
+  if (target.behavior == planning::BehaviorState::CRUISE && target.stop_s == std::nullopt) {
+    const double speed_diff = end_v - target.target_speed;
+
+    total_cost += config_.w_speed * (speed_diff * speed_diff);
+  } else if (target.behavior == planning::BehaviorState::STOP && target.stop_s.has_value()) {
+    const double position_error = end_s - target.stop_s.value();
+    const double speed_error = end_v - 0;
+
+    total_cost += config_.w_lon * (position_error * position_error) +
+                  config_.w_speed * (speed_error * speed_error);
+  }
 
   for (double t = 0.0; t <= T; t += dt) {
     // 纵向

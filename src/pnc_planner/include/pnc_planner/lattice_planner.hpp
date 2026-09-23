@@ -114,6 +114,12 @@ private:
     const planning::PlanningTarget &target
   ) const;
 
+  // 生成停止轨迹
+  std::vector<math::QuinticPolynomial> generate_stop_trajectories(
+    const VehicleInfo &ego,
+    const ReferenceLine &ref_line,
+    const planning::PlanningTarget &target) const;
+
   std::pair<int, int> evaluate_and_select_best_trajectory(
     const std::vector<math::QuinticPolynomial>& lat_trajs,
     const std::vector<math::QuinticPolynomial>& lon_trajs,

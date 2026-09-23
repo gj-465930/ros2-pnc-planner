@@ -31,6 +31,7 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   declare_parameter("lattice_planner.limits.target_speed", 15.0);
   declare_parameter("lattice_planner.limits.planning_time", 5.0);
   declare_parameter("lattice_planner.limits.terminal_safety_decel", 3.0);
+  declare_parameter("lattice_planner.limits.stop_comfort_decel", 3.0);
   declare_parameter("lattice_planner.limits.lateral_transition_distance", 12.0);
   // weights
   declare_parameter("planning_failure_fallback_decel", -3.0);
@@ -61,6 +62,8 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   config.planning_time = get_parameter("lattice_planner.limits.planning_time").as_double();
   config.terminal_safety_decel =
     get_parameter("lattice_planner.limits.terminal_safety_decel").as_double();
+  config.stop_comfort_decel =
+    get_parameter("lattice_planner.limits.stop_comfort_decel").as_double();
   config.lateral_transition_distance =
     get_parameter("lattice_planner.limits.lateral_transition_distance").as_double();
 

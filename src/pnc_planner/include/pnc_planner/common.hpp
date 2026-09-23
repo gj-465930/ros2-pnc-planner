@@ -63,6 +63,7 @@ struct LatticePlannerConfig {
   double target_speed = 0.0;
   double planning_time = 0.0;
   double terminal_safety_decel = 0.0;
+  double stop_comfort_decel = 0.0;
   double lateral_transition_distance = 0.0;
 
   // weights

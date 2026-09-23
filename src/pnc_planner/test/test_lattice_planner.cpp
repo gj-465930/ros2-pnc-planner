@@ -46,6 +46,7 @@ static pnc_planner::LatticePlannerConfig CreatePlannerConfig()
   config.target_speed = 5.0;
   config.planning_time = 3.0;
   config.terminal_safety_decel = 3.0;
+  config.stop_comfort_decel = 3.0;
   config.lateral_transition_distance = 12.0;
 
   config.w_lat = 1.0;
@@ -643,11 +644,117 @@ TEST(LatticePlannerTest, UsesPlanningTargetInsteadOfVehicleState)
   pnc_planner::LatticePlanner planner(config);
   pnc_planner::Trajectory trajectory;
 
-  const bool success =
-    planner.plan(ego, ref_line, target, trajectory);
+  const bool success = planner.plan(ego, ref_line, target, trajectory);
 
   EXPECT_TRUE(success);
   EXPECT_FALSE(trajectory.empty());
+}
+
+TEST(LatticePlannerTest, RejectsStopTargetBehindVehicle)
+{
+  const auto ref_line = CreateLongStraightReferenceLine();
+
+  auto ego = CreateCruisingEgo();
+  ego.pose.x = 20.0;
+  ego.pose.y = 0.0;
+  ego.v = 1.0;
+  ego.a = 0.0;
+
+  const auto config = CreatePlannerConfig();
+
+  pnc_planner::planning::PlanningTarget target;
+  target.behavior = pnc_planner::planning::BehaviorState::STOP;
+  target.target_speed = 0.0;
+  target.stop_s = 18.0;
+
+  pnc_planner::LatticePlanner planner(config);
+
+  pnc_planner::Trajectory trajectory;
+  trajectory.emplace_back();
+
+  ASSERT_FALSE(trajectory.empty());
+
+  const bool success = planner.plan(ego, ref_line, target, trajectory);
+
+  EXPECT_FALSE(success);
+  EXPECT_TRUE(trajectory.empty());
+
+  const auto & debug = planner.getLastDebugInfo();
+
+  EXPECT_EQ(
+    debug.planning_failure_reason,
+    pnc_planner::PlanningFailureReason::LONGITUDINAL_GENERATION_FAILED);
+}
+
+TEST(LatticePlannerTest, GeneratesStopTrajectory)
+{
+  const auto ref_line = CreateLongStraightReferenceLine();
+
+  auto ego = CreateCruisingEgo();
+  ego.v = 5.0;
+  ego.a = 0.0;
+
+  const auto config = CreatePlannerConfig();
+
+  pnc_planner::planning::PlanningTarget target;
+  target.behavior = pnc_planner::planning::BehaviorState::STOP;
+  target.target_speed = 0.0;
+  target.stop_s = 20.0;
+
+  pnc_planner::LatticePlanner planner(config);
+  pnc_planner::Trajectory trajectory;
+
+  ASSERT_TRUE(planner.plan(ego, ref_line, target, trajectory));
+  ASSERT_FALSE(trajectory.empty());
+
+  ASSERT_TRUE(target.stop_s.has_value());
+
+  EXPECT_NEAR(trajectory.back().x, target.stop_s.value(), 0.2);
+  EXPECT_NEAR(trajectory.back().v, 0.0, 0.05);
+  EXPECT_NEAR(trajectory.back().a, 0.0, 0.1);
+
+  double previous_x = trajectory.front().x;
+
+  for (const auto & point : trajectory) {
+    EXPECT_GE(point.x, previous_x - 1e-6);
+    EXPECT_GE(point.v, -1e-6);
+    EXPECT_LE(point.x, target.stop_s.value() + 0.1);
+    EXPECT_GE(point.a, config.min_acc - 1e-6);
+    EXPECT_LE(point.a, config.max_acc + 1e-6);
+
+    previous_x = point.x;
+  }
+}
+
+TEST(LatticePlannerTest, GeneratesHoldingTrajectoryWhenAlreadyStopped)
+{
+  const auto ref_line = CreateLongStraightReferenceLine();
+
+  auto ego = CreateCruisingEgo();
+  ego.pose.x = 18.0;
+  ego.pose.y = 0.0;
+  ego.v = 0.0;
+  ego.a = 0.0;
+
+  const auto config = CreatePlannerConfig();
+
+  pnc_planner::planning::PlanningTarget target;
+  target.behavior = pnc_planner::planning::BehaviorState::STOP;
+  target.target_speed = 0.0;
+  target.stop_s = 18.0;
+
+  pnc_planner::LatticePlanner planner(config);
+  pnc_planner::Trajectory trajectory;
+
+  ASSERT_TRUE(planner.plan(ego, ref_line, target, trajectory));
+
+  ASSERT_FALSE(trajectory.empty());
+
+  for (const auto & point : trajectory) {
+    EXPECT_NEAR(point.x, 18.0, 0.2);
+    EXPECT_NEAR(point.v, 0.0, 0.05);
+    EXPECT_NEAR(point.a, 0.0, 0.1);
+  }
 }
 
 }  // namespace
