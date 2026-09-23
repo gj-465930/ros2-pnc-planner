@@ -41,6 +41,7 @@ add_library(pnc_planner_core STATIC
     src/lattice_planner.cpp
     src/controller/pure_pursuit_controller.cpp
     src/controller/pid_controller.cpp
+    src/planning/behavior/behavior_planner.cpp
 )
 
 ament_target_dependencies(
@@ -183,6 +184,13 @@ if(BUILD_TESTING)
   )
   target_compile_definitions(test_scenario_loader PRIVATE
       PNC_PLANNER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  )
+
+  ament_add_gtest(test_behavior_planner
+      test/test_behavior_planner.cpp
+  )
+  target_link_libraries(test_behavior_planner
+      pnc_planner_core
   )
 
   # the following line skips the linter which checks for copyrights
