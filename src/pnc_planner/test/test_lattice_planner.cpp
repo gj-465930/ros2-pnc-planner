@@ -59,6 +59,17 @@ static pnc_planner::LatticePlannerConfig CreatePlannerConfig()
   return config;
 }
 
+static pnc_planner::planning::PlanningTarget CreatePlanningTarget(
+  const pnc_planner::LatticePlannerConfig & config)
+{
+  pnc_planner::planning::PlanningTarget target;
+
+  target.behavior = pnc_planner::planning::BehaviorState::CRUISE;
+  target.target_speed = config.target_speed;
+  target.stop_s = std::nullopt;
+  return target;
+}
+
 static pnc_planner::ReferenceLine CreateLongStraightReferenceLine()
 {
   pnc_planner::ReferenceLine ref_line;
@@ -78,11 +89,12 @@ TEST(LatticePlannerTest, GeneratesTrajectoryOnStraightReferenceLine)
   const auto ref_line = CreateStraightReferenceLine();
   const auto ego = CreateCruisingEgo();
   const auto config = CreatePlannerConfig();
+  const auto target = CreatePlanningTarget(config);
 
   pnc_planner::LatticePlanner planner(config);
   pnc_planner::Trajectory trajectory;
 
-  const bool flag = planner.plan(ego, ref_line, trajectory);
+  const bool flag = planner.plan(ego, ref_line, target, trajectory);
   ASSERT_TRUE(flag);
   ASSERT_FALSE(trajectory.empty());
 
@@ -136,6 +148,7 @@ TEST(LatticePlannerTest, ClearsOutputTrajectoryWhenPlanningFails)
   ego.pose.x = 39.0;
 
   const auto config = CreatePlannerConfig();
+  const auto target = CreatePlanningTarget(config);
 
   pnc_planner::LatticePlanner planner(config);
   pnc_planner::Trajectory trajectory;
@@ -147,7 +160,7 @@ TEST(LatticePlannerTest, ClearsOutputTrajectoryWhenPlanningFails)
 
   ASSERT_FALSE(trajectory.empty());
 
-  const bool flag = planner.plan(ego, ref_line, trajectory);
+  const bool flag = planner.plan(ego, ref_line, target, trajectory);
 
   ASSERT_FALSE(flag);
   EXPECT_TRUE(trajectory.empty());
@@ -168,6 +181,7 @@ TEST(LatticePlannerTest, FarObstacleDoesNotAffectPlanning)
   const auto ref_line = CreateStraightReferenceLine();
   const auto ego = CreateCruisingEgo();
   const auto config = CreatePlannerConfig();
+  const auto target = CreatePlanningTarget(config);
 
   pnc_planner::LatticePlanner planner(config);
 
@@ -181,7 +195,7 @@ TEST(LatticePlannerTest, FarObstacleDoesNotAffectPlanning)
   planner.setObstacles({obstacle});
 
   pnc_planner::Trajectory trajectory;
-  const bool success = planner.plan(ego, ref_line, trajectory);
+  const bool success = planner.plan(ego, ref_line, target, trajectory);
   ASSERT_TRUE(success);
   ASSERT_FALSE(trajectory.empty());
 
@@ -196,6 +210,7 @@ TEST(LatticePlannerTest, BlockingObstacleCausesPlanningFailureAndClearsOutput)
   const auto ref_line = CreateStraightReferenceLine();
   const auto ego = CreateCruisingEgo();
   const auto config = CreatePlannerConfig();
+  const auto target = CreatePlanningTarget(config);
 
   pnc_planner::LatticePlanner planner(config);
 
@@ -217,7 +232,7 @@ TEST(LatticePlannerTest, BlockingObstacleCausesPlanningFailureAndClearsOutput)
 
   ASSERT_FALSE(trajectory.empty());
 
-  const bool planning_success = planner.plan(ego, ref_line, trajectory);
+  const bool planning_success = planner.plan(ego, ref_line, target, trajectory);
 
   EXPECT_FALSE(planning_success);
   EXPECT_TRUE(trajectory.empty());
@@ -242,6 +257,7 @@ TEST(LatticePlannerTest, SelectsSafeCandidateAroundObstacle)
 
   auto config = CreatePlannerConfig();
   config.planning_time = 5.0;
+  const auto target = CreatePlanningTarget(config);
 
   pnc_planner::LatticePlanner planner(config);
 
@@ -255,7 +271,7 @@ TEST(LatticePlannerTest, SelectsSafeCandidateAroundObstacle)
   planner.setObstacles({obstacle});
 
   pnc_planner::Trajectory trajectory;
-  const bool planning_success = planner.plan(ego, ref_line, trajectory);
+  const bool planning_success = planner.plan(ego, ref_line, target, trajectory);
 
   ASSERT_TRUE(planning_success);
   ASSERT_FALSE(trajectory.empty());
@@ -285,6 +301,7 @@ TEST(LatticePlannerTest, ReportsLateAvoidanceFailureAtCriticalPosition)
 
   auto config = CreatePlannerConfig();
   config.planning_time = 5.0;
+  const auto target = CreatePlanningTarget(config);
 
   pnc_planner::LatticePlanner planner(config);
 
@@ -299,7 +316,7 @@ TEST(LatticePlannerTest, ReportsLateAvoidanceFailureAtCriticalPosition)
 
   pnc_planner::Trajectory initial_trajectory;
 
-  ASSERT_TRUE(planner.plan(ego, ref_line, initial_trajectory));
+  ASSERT_TRUE(planner.plan(ego, ref_line, target, initial_trajectory));
   ASSERT_FALSE(initial_trajectory.empty());
 
   const auto initial_debug = planner.getLastDebugInfo();
@@ -313,7 +330,7 @@ TEST(LatticePlannerTest, ReportsLateAvoidanceFailureAtCriticalPosition)
 
   pnc_planner::Trajectory critical_trajectory;
 
-  ASSERT_FALSE(planner.plan(ego, ref_line, critical_trajectory));
+  ASSERT_FALSE(planner.plan(ego, ref_line, target, critical_trajectory));
   EXPECT_TRUE(critical_trajectory.empty());
 
   const auto & critical_debug = planner.getLastDebugInfo();
@@ -339,6 +356,7 @@ TEST(LatticePlannerTest, RejectsUnsafeTerminalStateAndSelectsAvoidance)
 
   auto config = CreatePlannerConfig();
   config.planning_time = 5.0;
+  const auto target = CreatePlanningTarget(config);
 
   pnc_planner::LatticePlanner planner(config);
 
@@ -353,7 +371,7 @@ TEST(LatticePlannerTest, RejectsUnsafeTerminalStateAndSelectsAvoidance)
 
   pnc_planner::Trajectory trajectory;
 
-  ASSERT_TRUE(planner.plan(ego, ref_line, trajectory));
+  ASSERT_TRUE(planner.plan(ego, ref_line, target, trajectory));
   ASSERT_FALSE(trajectory.empty());
 
   const auto & debug = planner.getLastDebugInfo();
@@ -381,6 +399,8 @@ TEST(LatticePlannerTest, HoldsLateralTargetAfterLateralProfileEnds)
   config.w_offset = 0.0;
   config.w_speed = 1.0;
 
+  const auto target = CreatePlanningTarget(config);
+
   pnc_planner::LatticePlanner planner(config);
 
   pnc_planner::Obstacle obstacle;
@@ -394,7 +414,7 @@ TEST(LatticePlannerTest, HoldsLateralTargetAfterLateralProfileEnds)
 
   pnc_planner::Trajectory trajectory;
 
-  ASSERT_TRUE(planner.plan(ego, ref_line, trajectory));
+  ASSERT_TRUE(planner.plan(ego, ref_line, target, trajectory));
   ASSERT_FALSE(trajectory.empty());
 
   const auto & debug = planner.getLastDebugInfo();
@@ -418,6 +438,8 @@ TEST(LatticePlannerTest, ReplansContinuouslyAroundStaticObstacle)
   config.w_lateral_target_change = 100.0;
   double avoidance_direction = 0.0;
 
+  const auto target = CreatePlanningTarget(config);
+
   pnc_planner::LatticePlanner planner(config);
 
   pnc_planner::Obstacle obstacle;
@@ -436,7 +458,7 @@ TEST(LatticePlannerTest, ReplansContinuouslyAroundStaticObstacle)
   for (std::size_t iteration = 0; iteration < max_replan_count; ++iteration) {
     pnc_planner::Trajectory trajectory;
 
-    const bool planning_success = planner.plan(ego, ref_line, trajectory);
+    const bool planning_success = planner.plan(ego, ref_line, target, trajectory);
 
     const auto debug = planner.getLastDebugInfo();
 
@@ -501,10 +523,12 @@ TEST(LatticePlannerTest, UsesConfiguredLateralSamples)
   auto config = CreatePlannerConfig();
   config.lateral_samples = {2.0, 1.0, 0.0, -1.0, -2.0};
 
+  const auto target = CreatePlanningTarget(config);
+
   pnc_planner::LatticePlanner planner(config);
   pnc_planner::Trajectory trajectory;
 
-  ASSERT_TRUE(planner.plan(ego, ref_line, trajectory));
+  ASSERT_TRUE(planner.plan(ego, ref_line, target, trajectory));
 
   const auto & debug = planner.getLastDebugInfo();
   EXPECT_EQ(debug.lateral_candidate_count, 5U);
@@ -523,6 +547,8 @@ TEST(LatticePlannerTest, ContinuesAvoidanceNearLateralTarget)
   config.planning_time = 5.0;
   config.w_lateral_target_change = 100.0;
 
+  const auto target = CreatePlanningTarget(config);
+
   pnc_planner::LatticePlanner planner(config);
 
   pnc_planner::Obstacle obstacle;
@@ -536,7 +562,7 @@ TEST(LatticePlannerTest, ContinuesAvoidanceNearLateralTarget)
 
   pnc_planner::Trajectory trajectory;
 
-  ASSERT_TRUE(planner.plan(ego, ref_line, trajectory));
+  ASSERT_TRUE(planner.plan(ego, ref_line, target, trajectory));
 
   ASSERT_FALSE(trajectory.empty());
 
@@ -546,6 +572,82 @@ TEST(LatticePlannerTest, ContinuesAvoidanceNearLateralTarget)
   EXPECT_TRUE(debug.selection_found);
 
   EXPECT_NEAR(debug.selected_lateral_target, 3.5, kEps);
+}
+
+TEST(LatticePlannerTest, UsesPlanningTargetSpeed)
+{
+  const auto ref_line = CreateLongStraightReferenceLine();
+  const auto ego = CreateCruisingEgo();
+  const auto config = CreatePlannerConfig();
+
+  auto slow_target = CreatePlanningTarget(config);
+  slow_target.target_speed = 4.0;
+
+  auto fast_target = CreatePlanningTarget(config);
+  fast_target.target_speed = 8.0;
+
+  pnc_planner::LatticePlanner slow_planner(config);
+  pnc_planner::LatticePlanner fast_planner(config);
+
+  pnc_planner::Trajectory slow_trajectory;
+  pnc_planner::Trajectory fast_trajectory;
+
+  ASSERT_TRUE(slow_planner.plan(ego, ref_line, slow_target, slow_trajectory));
+  ASSERT_TRUE(fast_planner.plan(ego, ref_line, fast_target, fast_trajectory));
+
+  ASSERT_FALSE(slow_trajectory.empty());
+  ASSERT_FALSE(fast_trajectory.empty());
+
+  EXPECT_GT(fast_trajectory.back().v, slow_trajectory.back().v);
+}
+
+TEST(LatticePlannerTest, ClearsOutputForInvalidPlanningTarget)
+{
+  const auto ref_line = CreateLongStraightReferenceLine();
+  const auto ego = CreateCruisingEgo();
+  const auto config = CreatePlannerConfig();
+
+  auto invalid_target = CreatePlanningTarget(config);
+  invalid_target.target_speed = -1.0;
+
+  pnc_planner::LatticePlanner planner(config);
+
+  pnc_planner::Trajectory trajectory;
+  trajectory.emplace_back();
+
+  ASSERT_FALSE(trajectory.empty());
+
+  const bool success = planner.plan(ego, ref_line, invalid_target, trajectory);
+
+  EXPECT_FALSE(success);
+  EXPECT_TRUE(trajectory.empty());
+
+  const auto & debug = planner.getLastDebugInfo();
+
+  EXPECT_EQ(
+    debug.planning_failure_reason, pnc_planner::PlanningFailureReason::INVALID_PLANNING_TARGET);
+  EXPECT_EQ(debug.lateral_candidate_count, 0U);
+  EXPECT_EQ(debug.longitudinal_candidate_count, 0U);
+}
+
+TEST(LatticePlannerTest, UsesPlanningTargetInsteadOfVehicleState)
+{
+  const auto ref_line = CreateLongStraightReferenceLine();
+
+  auto ego = CreateCruisingEgo();
+  ego.current_state = pnc_planner::VehicleState::STANDBY;
+
+  const auto config = CreatePlannerConfig();
+  const auto target = CreatePlanningTarget(config);
+
+  pnc_planner::LatticePlanner planner(config);
+  pnc_planner::Trajectory trajectory;
+
+  const bool success =
+    planner.plan(ego, ref_line, target, trajectory);
+
+  EXPECT_TRUE(success);
+  EXPECT_FALSE(trajectory.empty());
 }
 
 }  // namespace

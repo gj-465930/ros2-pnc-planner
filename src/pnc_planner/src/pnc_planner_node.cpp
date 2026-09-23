@@ -227,9 +227,14 @@ void PncPlannerNode::timerCallback()
   // 规划
   Trajectory candidate_traj;
 
+  planning::PlanningTarget target;
+  target.behavior = planning::BehaviorState::CRUISE;
+  target.target_speed = get_parameter("lattice_planner.limits.target_speed").as_double();
+  target.stop_s = std::nullopt;
+
   // 规划时间计时
   const auto planning_start = std::chrono::steady_clock::now();
-  const bool planning_success = lattice_planner_->plan(ego, *ref_line_, candidate_traj);
+  const bool planning_success = lattice_planner_->plan(ego, *ref_line_, target, candidate_traj);
   // 结束计时
   const auto planning_end = std::chrono::steady_clock::now();
 

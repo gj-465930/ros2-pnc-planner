@@ -9,10 +9,26 @@ namespace pnc_planner
 {
 
 bool LatticePlanner::plan(
-  const VehicleInfo & ego, const ReferenceLine & ref_line, Trajectory & out_trajectory)
+  const VehicleInfo & ego, const ReferenceLine & ref_line, const planning::PlanningTarget & target,
+  Trajectory & out_trajectory)
 {
   debug_info_ = {};
   out_trajectory.clear();
+
+  // 目标校验
+  const bool valid_cruise_target = target.behavior == planning::BehaviorState::CRUISE &&
+                                   std::isfinite(target.target_speed) &&
+                                   target.target_speed >= 0.0 && !target.stop_s.has_value();
+
+  const bool valid_stop_target = target.behavior == planning::BehaviorState::STOP &&
+                                 target.target_speed == 0.0 && target.stop_s.has_value() &&
+                                 std::isfinite(*target.stop_s);
+
+  if (!valid_cruise_target && !valid_stop_target) {
+    debug_info_.planning_failure_reason = PlanningFailureReason::INVALID_PLANNING_TARGET;
+    return false;
+  }
+
   ref_line_ = &ref_line;
 
   // 生成横向候选轨迹
@@ -26,7 +42,7 @@ bool LatticePlanner::plan(
   }
 
   // 生成纵向候选轨迹
-  const auto lon_trajs = generate_longitudinal_trajectories(ego, ref_line);
+  const auto lon_trajs = generate_longitudinal_trajectories(ego, ref_line, target);
   debug_info_.longitudinal_candidate_count = lon_trajs.size();
 
   if (lon_trajs.empty()) {
@@ -37,7 +53,7 @@ bool LatticePlanner::plan(
   }
 
   // cost evaluation
-  const auto best_indices = evaluate_and_select_best_trajectory(lat_trajs, lon_trajs);
+  const auto best_indices = evaluate_and_select_best_trajectory(lat_trajs, lon_trajs, target);
   const int best_lat_idx = best_indices.first;
   const int best_lon_idx = best_indices.second;
 
@@ -119,22 +135,22 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_lateral_trajectori
 }
 
 std::vector<math::QuinticPolynomial> LatticePlanner::generate_longitudinal_trajectories(
-  const VehicleInfo & ego, const ReferenceLine & ref_line) const
+  const VehicleInfo & ego, const ReferenceLine & ref_line,
+  const planning::PlanningTarget & target) const
 {
-  switch (ego.current_state) {
-    case pnc_planner::VehicleState::CRUISING:
-      return generate_cruise_trajectories(ego, ref_line);
+  switch (target.behavior) {
+    case planning::BehaviorState::CRUISE:
+      return generate_cruise_trajectories(ego, ref_line, target);
 
-    case pnc_planner::VehicleState::EMERGENCY:
-    case pnc_planner::VehicleState::INIT:
-    case pnc_planner::VehicleState::STANDBY:
+    case planning::BehaviorState::STOP:
     default:
-      return generate_emergency_trajectories(ego, ref_line);
+      return {};
   }
 }
 
 std::vector<math::QuinticPolynomial> LatticePlanner::generate_cruise_trajectories(
-  const VehicleInfo & ego, const ReferenceLine & ref_line) const
+  const VehicleInfo & ego, const ReferenceLine & ref_line,
+  const planning::PlanningTarget & target) const
 {
   std::vector<math::QuinticPolynomial> lon_cruise_trajs;
 
@@ -149,7 +165,7 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_cruise_trajectorie
   double v0 = ego.v;
   double a0 = ego.a;
 
-  const double cruise_speed = config_.target_speed;
+  const double cruise_speed = target.target_speed;
 
   const std::vector<double> sample_v = {
     cruise_speed - 2.0, cruise_speed - 1.0, cruise_speed, cruise_speed + 1.0, cruise_speed + 2.0};
@@ -171,53 +187,9 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_cruise_trajectorie
   return lon_cruise_trajs;
 }
 
-std::vector<math::QuinticPolynomial> LatticePlanner::generate_emergency_trajectories(
-  const VehicleInfo & ego, const ReferenceLine & ref_line) const
-{
-  std::vector<math::QuinticPolynomial> lon_emergency_trajs;
-
-  double s0 = 0.0;
-  double l0 = 0.0;
-
-  if (bool is_trasform = ref_line.getFrenetPoint(ego.pose.x, ego.pose.y, s0, l0); !is_trasform) {
-    std::cerr << "[LatticePlanner] Error: 停车规划s0获取失败" << std::endl;
-    return lon_emergency_trajs;
-  }
-
-  double v0 = ego.v;
-  double a0 = ego.a;
-
-  // INIT/STANDBY 状态
-  if (v0 < 0.1) {
-    double T = 3.0;
-    lon_emergency_trajs.emplace_back(s0, 0.0, 0.0, s0, 0.0, 0.0, T);
-    return lon_emergency_trajs;
-  }
-
-  // 刹车
-  const std::vector<double> sample_decel = {-3.0, -5.0, -8.0};
-
-  lon_emergency_trajs.reserve(sample_decel.size());
-  for (const double decel : sample_decel) {
-    double T = (0 - v0) / decel;
-
-    // 设置下限
-    if (T < 0.5) T = 0.5;
-
-    double v1 = 0.0;
-    double a1 = 0.0;
-
-    double s1 = s0 + (v0 / 2) * T;
-    if (s1 > ref_line_->getTotalLength()) continue;
-
-    lon_emergency_trajs.emplace_back(s0, v0, a0, s1, v1, a1, T);
-  }
-  return lon_emergency_trajs;
-}
-
 std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
   const std::vector<math::QuinticPolynomial> & lat_trajs,
-  const std::vector<math::QuinticPolynomial> & lon_trajs)
+  const std::vector<math::QuinticPolynomial> & lon_trajs, const planning::PlanningTarget & target)
 {
   // 初始化最小代价
   double min_cost = std::numeric_limits<double>::max();
@@ -261,7 +233,7 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
       ++debug_info_.valid_pair_count;
       debug_info_.valid_candidate_trajectories.push_back(std::move(candidate_trajectory));
 
-      double current_cost = calculate_trajectory_cost(lat_traj, lon_traj);
+      double current_cost = calculate_trajectory_cost(lat_traj, lon_traj, target);
       const double lateral_target = lat_traj.evaluate(lat_traj.get_T());
 
       // 加入偏移权重
@@ -393,7 +365,8 @@ LatticePlanner::TrajectoryValidationResult LatticePlanner::is_trajectory_valid(
 }
 
 double LatticePlanner::calculate_trajectory_cost(
-  const math::QuinticPolynomial & lat_traj, const math::QuinticPolynomial & lon_traj) const
+  const math::QuinticPolynomial & lat_traj, const math::QuinticPolynomial & lon_traj,
+  const planning::PlanningTarget & target) const
 {
   double total_cost = 0.0;
 
@@ -406,7 +379,7 @@ double LatticePlanner::calculate_trajectory_cost(
   double lat_offset_cost = 0.0;
 
   const double end_v = lon_traj.evaluate_d(T);
-  const double speed_diff = config_.target_speed - end_v;
+  const double speed_diff = target.target_speed - end_v;
 
   total_cost += config_.w_speed * (speed_diff * speed_diff);
 

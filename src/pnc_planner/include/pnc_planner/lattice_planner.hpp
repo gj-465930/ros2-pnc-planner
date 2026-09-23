@@ -23,6 +23,7 @@ namespace pnc_planner
 
 enum class PlanningFailureReason : std::uint8_t {
   NONE = 0,
+  INVALID_PLANNING_TARGET,
   LATERAL_GENERATION_FAILED,
   LONGITUDINAL_GENERATION_FAILED,
   NO_VALID_TRAJECTORY,
@@ -57,7 +58,8 @@ public:
   ~LatticePlanner() override = default;
 
   bool plan(const VehicleInfo &ego, 
-            const ReferenceLine &ref_line, 
+            const ReferenceLine &ref_line,
+            const planning::PlanningTarget &target,
             Trajectory &out_trajectory) override;
 
   std::string get_name() const override{
@@ -101,24 +103,21 @@ private:
   //读取状态机器分发任务
   std::vector<math::QuinticPolynomial> generate_longitudinal_trajectories(
     const VehicleInfo &ego,
-    const ReferenceLine &ref_line
+    const ReferenceLine &ref_line,
+    const planning::PlanningTarget &target
   ) const;
 
   // 生成巡航加减速轨迹
   std::vector<math::QuinticPolynomial> generate_cruise_trajectories(
     const VehicleInfo &ego,
-    const ReferenceLine &ref_line
-  ) const;
-
-  // 生成紧急刹车轨迹
-  std::vector<math::QuinticPolynomial> generate_emergency_trajectories(
-    const VehicleInfo &ego,
-    const ReferenceLine &ref_line
+    const ReferenceLine &ref_line,
+    const planning::PlanningTarget &target
   ) const;
 
   std::pair<int, int> evaluate_and_select_best_trajectory(
     const std::vector<math::QuinticPolynomial>& lat_trajs,
-    const std::vector<math::QuinticPolynomial>& lon_trajs
+    const std::vector<math::QuinticPolynomial>& lon_trajs,
+    const planning::PlanningTarget &target
   );
   // 碰撞与越界检测
   TrajectoryValidationResult is_trajectory_valid(
@@ -129,7 +128,8 @@ private:
   // 打分
   double calculate_trajectory_cost(
     const math::QuinticPolynomial &lat_traj,
-    const math::QuinticPolynomial &lon_traj
+    const math::QuinticPolynomial &lon_traj,
+    const planning::PlanningTarget &target
   ) const;
 
   // 1D转2D
