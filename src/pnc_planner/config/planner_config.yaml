@@ -21,6 +21,13 @@ pnc_node:
         w_offset: 2.0
         w_speed: 1.0
         w_lateral_target_change: 100.0
+
+    behavior_planner:
+      cruise_speed: 15.0
+      route_end_stop_buffer: 2.0
+      comfortable_decel: 3.0
+      stop_trigger_margin: 1.0
+    
     use_mock_routing: false
     planning_failure_fallback_decel: -3.0
 

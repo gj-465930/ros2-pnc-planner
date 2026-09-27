@@ -18,6 +18,8 @@ Visualizer::Visualizer(rclcpp::Node & node) : node_(node)
     node_.create_publisher<visualization_msgs::msg::MarkerArray>("lattice_candidate_markers", 10);
   obstacle_marker_pub_ =
     node_.create_publisher<visualization_msgs::msg::MarkerArray>("static_obstacle_markers", qos);
+  stop_point_marker_pub_ =
+    node_.create_publisher<visualization_msgs::msg::Marker>("stop_point_marker", qos);
 }
 
 // 传入point消息然后用mark画参考线
@@ -171,6 +173,48 @@ void Visualizer::publishStaticObstacles(
   }
 
   obstacle_marker_pub_->publish(marker_array);
+}
+
+void Visualizer::publishStopPoint(const geometry_msgs::msg::Point & point) const
+{
+  visualization_msgs::msg::Marker marker;
+
+  marker.header.frame_id = "map";
+  marker.header.stamp = node_.now();
+
+  marker.ns = "stop_target";
+  marker.id = 0;
+  marker.type = visualization_msgs::msg::Marker::CYLINDER;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+
+  marker.pose.position = point;
+  marker.pose.position.z = 0.25;
+  marker.pose.orientation.w = 1.0;
+
+  marker.scale.x = 0.0;
+  marker.scale.y = 0.5;
+  marker.scale.z = 0.5;
+
+  marker.color.r = 1.0F;
+  marker.color.g = 0.8F;
+  marker.color.b = 0.0F;
+  marker.color.a = 0.9F;
+
+  stop_point_marker_pub_->publish(marker);
+}
+
+void Visualizer::clearStopPoint() const
+{
+  visualization_msgs::msg::Marker marker;
+
+  marker.header.frame_id = "map";
+  marker.header.stamp = node_.now();
+
+  marker.ns = "stop_point";
+  marker.id = 0;
+  marker.action = visualization_msgs::msg::Marker::DELETEALL;
+
+  stop_point_marker_pub_->publish(marker);
 }
 
 }  // namespace pnc_planner

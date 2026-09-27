@@ -48,6 +48,12 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   declare_parameter("mock_ego.v", 5.0);
   declare_parameter("mock_ego.a", 0.0);
 
+  // behavior参数
+  declare_parameter("behavior_planner.cruise_speed", 15.0);
+  declare_parameter("behavior_planner.route_end_stop_buffer", 2.0);
+  declare_parameter("behavior_planner.comfortable_decel", 3.0);
+  declare_parameter("behavior_planner.stop_trigger_margin", 1.0);
+
   // 读取参数
   LatticePlannerConfig config;
   config.lateral_samples = get_parameter("lattice_planner.lateral_samples").as_double_array();
@@ -120,7 +126,18 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
     throw std::runtime_error("lattice_planner.lateral_samples must contain 0.0");
   }
 
+  // behavior参数读取
+  planning::behavior::BehaviorPlannerConfig behavior_config;
+  behavior_config.cruise_speed = get_parameter("behavior_planner.cruise_speed").as_double();
+  behavior_config.route_end_stop_buffer =
+    get_parameter("behavior_planner.route_end_stop_buffer").as_double();
+  behavior_config.comfortable_decel =
+    get_parameter("behavior_planner.comfortable_decel").as_double();
+  behavior_config.stop_trigger_margin =
+    get_parameter("behavior_planner.stop_trigger_margin").as_double();
+
   lattice_planner_ = std::make_shared<LatticePlanner>(config);
+  behavior_planner_ = std::make_unique<planning::behavior::BehaviorPlanner>(behavior_config);
 
   // 初始化自车
   ego_vehicle_ = std::make_shared<EgoVehicle>(this);
@@ -227,17 +244,67 @@ void PncPlannerNode::timerCallback()
   if (ref_line_ == nullptr || ref_line_->getTotalLength() <= 0.0) return;
   const VehicleInfo ego = ego_vehicle_->getVehicleState();
 
-  // 规划
+  std::optional<planning::PlanningTarget> result = behavior_planner_->plan(ego, *ref_line_);
+
   Trajectory candidate_traj;
-
-  planning::PlanningTarget target;
-  target.behavior = planning::BehaviorState::CRUISE;
-  target.target_speed = get_parameter("lattice_planner.limits.target_speed").as_double();
-  target.stop_s = std::nullopt;
-
   // 规划时间计时
   const auto planning_start = std::chrono::steady_clock::now();
+  // 规划
+  if (!result.has_value()) {
+    planned_traj_.clear();
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000,
+      "Behavior planning failed; cleared stale trajectory and applying fallback decel %.2f",
+      planning_failure_fallback_decel_);
+
+    ego_vehicle_->setCommand(planning_failure_fallback_decel_, 0.0);
+    ego_vehicle_->updateState(dt);
+
+    return;
+  }
+  const planning::PlanningTarget target = result.value();
+
+  if (target.behavior == planning::BehaviorState::STOP && target.stop_s.has_value()) {
+    double stop_x = 0.0;
+    double stop_y = 0.0;
+    double stop_yaw = 0.0;
+
+    if (ref_line_->getCartesianPoint(target.stop_s.value(), 0.0, stop_x, stop_y, stop_yaw)) {
+      geometry_msgs::msg::Point stop_point;
+      stop_point.x = stop_x;
+      stop_point.y = stop_y;
+      stop_point.z = 0.0;
+
+      visualizer_->publishStopPoint(stop_point);
+    } else {
+      visualizer_->clearStopPoint();
+    }
+  }
+
+  // 记录上一个点
+  if (!last_behavior_state_.has_value() || last_behavior_state_ != target.behavior) {
+    if (target.behavior == planning::BehaviorState::CRUISE) {
+      RCLCPP_INFO(
+        this->get_logger(), "Behavior changed to CRUISE: target_speed:%.2f", target.target_speed);
+    } else if (target.behavior == planning::BehaviorState::STOP && target.stop_s.has_value()) {
+      double ego_s = 0.0;
+      double ego_l = 0.0;
+
+      if (ref_line_->getFrenetPoint(ego.pose.x, ego.pose.y, ego_s, ego_l)) {
+        RCLCPP_INFO(
+          this->get_logger(), "Behavior changed to STOPL stop_s=%.2f, remaining_distance=%.2f",
+          target.stop_s.value(), target.stop_s.value() - ego_s);
+      } else {
+        RCLCPP_WARN(
+          this->get_logger(), "Behavior changed to STOP, but ego Frenet conversion failed");
+      }
+    }
+
+    last_behavior_state_ = target.behavior;
+  }
+
   const bool planning_success = lattice_planner_->plan(ego, *ref_line_, target, candidate_traj);
+
   // 结束计时
   const auto planning_end = std::chrono::steady_clock::now();
 

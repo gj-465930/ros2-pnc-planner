@@ -31,6 +31,10 @@ public:
 
   void publishStaticObstacles(const pnc_planner::msg::ObstacleArray & obstacles_array) const;
 
+  void publishStopPoint(const geometry_msgs::msg::Point & point) const;
+
+  void clearStopPoint() const;
+
 private:
   rclcpp::Node & node_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;
@@ -38,6 +42,7 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr traj_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr candidate_marker_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr obstacle_marker_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr stop_point_marker_pub_;
 };
 
 }  // namespace pnc_planner

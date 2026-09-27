@@ -6,6 +6,7 @@
 #include "pnc_planner/lattice_planner.hpp"
 #include "pnc_planner/msg/obstacle_array.hpp"
 #include "pnc_planner/msg/scenario_initial_state.hpp"
+#include "pnc_planner/planning/behavior/behavior_planner.hpp"
 #include "pnc_planner/reference_line.hpp"
 #include "pnc_planner/visualizer.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -13,6 +14,7 @@
 #include "nav_msgs/msg/path.hpp"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace pnc_planner
@@ -44,8 +46,11 @@ private:
   std::shared_ptr<Visualizer> visualizer_;
   std::shared_ptr<ReferenceLine> ref_line_;
   std::shared_ptr<LatticePlanner> lattice_planner_;
+  std::unique_ptr<planning::behavior::BehaviorPlanner> behavior_planner_;
   std::unique_ptr<controller::LateralControllerBase> lateral_ctrl_;
   std::unique_ptr<controller::LongitudinalControllerBase> longitudinal_controller_;
+
+  std::optional<planning::BehaviorState> last_behavior_state_;
 
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr global_route_sub_;
