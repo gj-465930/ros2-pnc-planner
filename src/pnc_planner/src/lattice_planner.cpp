@@ -231,12 +231,11 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_stop_trajectories(
   }
 
   if (std::abs(remaining_distance) <= position_tolerance) {
-    if (std::abs(ego.v) > speed_tolerance) {
+    if (std::abs(ego.v) <= speed_tolerance) {
+      stop_trajectories.emplace_back(ego_s, 0.0, 0.0, ego_s, 0.0, 0.0, hold_duration);
+
       return stop_trajectories;
     }
-
-    stop_trajectories.emplace_back(ego_s, 0.0, 0.0, ego_s, 0.0, 0.0, hold_duration);
-    return stop_trajectories;
   }
 
   if (ego.v <= speed_tolerance) {
@@ -247,8 +246,8 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_stop_trajectories(
   const double distance_duration = remaining_distance / (ego.v / 2.0);
   const double base_duration = std::max(deceleration_duration, distance_duration);
 
-  constexpr std::size_t sample_count = 5;
-  constexpr double duration_step = 0.5;
+  constexpr std::size_t sample_count = 21;
+  constexpr double duration_step = 0.1;
 
   stop_trajectories.reserve(sample_count);
 
@@ -277,7 +276,7 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
 
       ++debug_info_.evaluated_pair_count;
 
-      switch (is_trajectory_valid(lat_traj, lon_traj)) {
+      switch (is_trajectory_valid(lat_traj, lon_traj, target)) {
         case TrajectoryValidationResult::VALID:
           break;
 
@@ -333,7 +332,8 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
 }
 
 LatticePlanner::TrajectoryValidationResult LatticePlanner::is_trajectory_valid(
-  const math::QuinticPolynomial & lat_traj, const math::QuinticPolynomial & lon_traj) const
+  const math::QuinticPolynomial & lat_traj, const math::QuinticPolynomial & lon_traj,
+  const planning::PlanningTarget & target) const
 {
   constexpr double constraint_tolerance = 1e-6;
 
@@ -358,8 +358,21 @@ LatticePlanner::TrajectoryValidationResult LatticePlanner::is_trajectory_valid(
       return TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED;
     }
 
-    // 横向有效性判断
     const double s = lon_traj.evaluate(t);
+
+    if (target.behavior == planning::BehaviorState::STOP) {
+      if (v < -constraint_tolerance) {
+        // 倒车
+        return TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED;
+      }
+
+      if (target.stop_s.has_value() && s > target.stop_s.value() + constraint_tolerance) {
+        // 轨迹点在停车点后面
+        return TrajectoryValidationResult::UNSAFE_TERMINAL_STATE;
+      }
+    }
+
+    // 横向有效性判断
     const double lateral_progress = std::clamp(s - s0, 0.0, lat_traj.get_T());
     const double l = lat_traj.evaluate(lateral_progress);
 
@@ -398,7 +411,7 @@ LatticePlanner::TrajectoryValidationResult LatticePlanner::is_trajectory_valid(
   const double terminal_l = lat_traj.evaluate(terminal_progress);
 
   if (const double available_distance = std::max(ref_line_->getTotalLength() - terminal_s, 0.0);
-      braking_distance > available_distance) {
+      braking_distance > available_distance + constraint_tolerance) {
     return TrajectoryValidationResult::UNSAFE_TERMINAL_STATE;
   }
 

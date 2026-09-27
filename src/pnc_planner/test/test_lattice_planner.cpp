@@ -1,8 +1,10 @@
 #include "gtest/gtest.h"
 #include "pnc_planner/lattice_planner.hpp"
+#include "pnc_planner/planning/behavior/behavior_planner.hpp"
 #include "pnc_planner/reference_line.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <vector>
 
 constexpr double kEps = 1e-6;
@@ -755,6 +757,102 @@ TEST(LatticePlannerTest, GeneratesHoldingTrajectoryWhenAlreadyStopped)
     EXPECT_NEAR(point.v, 0.0, 0.05);
     EXPECT_NEAR(point.a, 0.0, 0.1);
   }
+}
+
+TEST(LatticePlannerTest, StopsStablyAcrossContinuousReplanning)
+{
+  pnc_planner::ReferenceLine ref_line;
+  const std::vector<double> x = {0.0, 10.0, 20.0};
+  const std::vector<double> y = {0.0, 0.0, 0.0};
+
+  ASSERT_TRUE(ref_line.init(x, y));
+
+  auto lattice_config = CreatePlannerConfig();
+  lattice_config.planning_time = 0.5;
+
+  pnc_planner::planning::behavior::BehaviorPlannerConfig behavior_config;
+  behavior_config.cruise_speed = 3.0;
+  behavior_config.route_end_stop_buffer = 0.0;
+  behavior_config.comfortable_decel = 3.0;
+  behavior_config.stop_trigger_margin = 2.0;
+
+  pnc_planner::planning::behavior::BehaviorPlanner behavior_planner(behavior_config);
+  pnc_planner::LatticePlanner lattice_planner(lattice_config);
+
+  auto ego = CreateCruisingEgo();
+  ego.v = 3.0;
+  ego.a = 0.0;
+  ego.pose.x = 16.0;
+  ego.pose.y = 0.0;
+
+  constexpr std::size_t max_replan_count = 100;
+  constexpr double stop_s = 20.0;
+  constexpr double position_tolerance = 0.1;
+  constexpr double speed_tolerance = 0.1;
+
+  bool saw_cruise = false;
+  bool saw_stop = false;
+  bool stopped = false;
+
+  for (std::size_t iteration = 0; iteration < max_replan_count; ++iteration) {
+    const auto target = behavior_planner.plan(ego, ref_line);
+
+    ASSERT_TRUE(target.has_value())
+      << "iteration: " << iteration << ", ego_x: " << ego.pose.x << ", ego_v: " << ego.v;
+
+    if (target->behavior == pnc_planner::planning::BehaviorState::CRUISE) {
+      EXPECT_FALSE(saw_stop) << "iteration: " << iteration;
+      saw_cruise = true;
+    } else {
+      saw_stop = true;
+      ASSERT_TRUE(target->stop_s.has_value());
+      EXPECT_NEAR(*target->stop_s, stop_s, kEps);
+    }
+
+    pnc_planner::Trajectory trajectory;
+    const bool planning_success = lattice_planner.plan(ego, ref_line, *target, trajectory);
+
+    const auto & debug = lattice_planner.getLastDebugInfo();
+
+    ASSERT_TRUE(planning_success) << "iteration: " << iteration << ", ego_x: " << ego.pose.x
+                                  << ", ego_v: " << ego.v
+                                  << ", stop_s: " << target->stop_s.value_or(-1.0)
+                                  << ", longitudinal_candidates: "
+                                  << debug.longitudinal_candidate_count
+                                  << ", lateral_condidates: " << debug.lateral_candidate_count
+                                  << ", kinematic_rejections: " << debug.kinematic_rejection_count
+                                  << ", terminal_safety_rejections: "
+                                  << debug.terminal_safety_rejection_count
+                                  << ", selected_duration: " << debug.selected_duration;
+
+    ASSERT_GT(trajectory.size(), 1U) << "iteration: " << iteration;
+
+    const auto & next_state = trajectory[1];
+
+    EXPECT_GE(next_state.x, ego.pose.x - kEps) << "iteration: " << iteration;
+
+    EXPECT_LE(next_state.x, stop_s + position_tolerance) << "iteration: " << iteration;
+
+    EXPECT_GE(next_state.v, -kEps) << "iteration: " << iteration;
+
+    ego.pose.x = next_state.x;
+    ego.pose.y = next_state.y;
+    ego.pose.yaw = next_state.heading;
+    ego.v = next_state.v;
+    ego.a = next_state.a;
+
+    if (
+      saw_stop && std::abs(ego.pose.x - stop_s) <= position_tolerance && ego.v <= speed_tolerance) {
+      stopped = true;
+      break;
+    }
+  }
+
+  EXPECT_TRUE(saw_cruise);
+  EXPECT_TRUE(saw_stop);
+  EXPECT_TRUE(stopped);
+  EXPECT_NEAR(ego.pose.x, stop_s, position_tolerance);
+  EXPECT_LE(ego.v, speed_tolerance);
 }
 
 }  // namespace

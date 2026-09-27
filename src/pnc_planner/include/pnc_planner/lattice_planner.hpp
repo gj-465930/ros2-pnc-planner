@@ -128,7 +128,8 @@ private:
   // 碰撞与越界检测
   TrajectoryValidationResult is_trajectory_valid(
     const math::QuinticPolynomial& lat_traj,
-    const math::QuinticPolynomial& lon_traj
+    const math::QuinticPolynomial& lon_traj,
+    const planning::PlanningTarget &target
   ) const;
 
   // 打分
@@ -139,7 +140,7 @@ private:
   ) const;
 
   // 1D转2D
-  bool combine_and_transform_to_2d(
+  static bool combine_and_transform_to_2d(
     const math::QuinticPolynomial& best_lat,
     const math::QuinticPolynomial& best_lon,
     const ReferenceLine& ref_line,
