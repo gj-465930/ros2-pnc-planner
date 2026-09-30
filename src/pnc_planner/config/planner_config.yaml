@@ -2,6 +2,7 @@ pnc_node:
   ros__parameters:
     lattice_planner:
       lateral_samples: [3.5, 0.0, -3.5]
+      speed_sample_offsets: [-2.0, -1.0, 0.0, 1.0, 2.0]
 
       limits:
         max_v: 35.0
@@ -14,6 +15,7 @@ pnc_node:
         planning_time: 5.0
         terminal_safety_decel: 3.0
         stop_comfort_decel: 3.0
+        stop_position_margin: 0.0
         lateral_transition_distance: 12.0
       weights:
         w_lat: 1.0
@@ -26,7 +28,7 @@ pnc_node:
       cruise_speed: 15.0
       route_end_stop_buffer: 2.0
       comfortable_decel: 3.0
-      stop_trigger_margin: 1.0
+      stop_trigger_margin: 2.2
     
     use_mock_routing: false
     planning_failure_fallback_decel: -3.0

@@ -28,18 +28,45 @@ void EgoVehicle::updateState(double dt)
   double v0 = vehicle_info_.v;
   double yaw0 = vehicle_info_.pose.yaw;
 
-  double v1 = v0 + vehicle_info_.a * dt;
+  const double a0 = vehicle_info_.a;
+  const double a1 = commanded_accel_;
   double delta_s = 0.0;
 
-  if (v1 < 0.0 && v0 >= 0.0) {
-    double t_stop = v0 / std::abs(vehicle_info_.a);
-    delta_s = v0 * dt + 0.5 * vehicle_info_.a * t_stop * t_stop;
-
+  if (dt == 0.0) {
+    // 初始化场景状态
+    vehicle_info_.a = a1;
+  } else if (v0 >= 0.0 && v0 < 0.01 && a1 <= 0.0) {
+    // 仿真的静止死区：低速且仍在制动时，不再累计位移
     vehicle_info_.v = 0.0;
     vehicle_info_.a = 0.0;
   } else {
-    delta_s = v0 * dt + 0.5 * vehicle_info_.a * dt * dt;
-    vehicle_info_.v = v1;
+    const double jerk = (a1 - a0) / dt;
+    const double v1 = v0 + (a0 + a1) / 2.0 * dt;
+
+    if (v1 < 0.0 && v0 >= 0.0) {
+      // 找到本轮内速度刚好是0的时刻
+      double low = 0.0;
+      double high = dt;
+      for (std::size_t i = 0; i < 40; ++i) {
+        const double mid = (low + high) / 2.0;
+        const double mid_a = a0 + jerk * mid;
+        const double mid_v = v0 + (a0 + mid_a) / 2.0 * mid;
+        if (mid_v > 0.0) {
+          low = mid;
+        } else {
+          high = mid;
+        }
+      }
+
+      const double t_stop = high;
+      delta_s = v0 * t_stop + 0.5 * a0 * t_stop * t_stop + jerk * t_stop * t_stop * t_stop / 6.0;
+      vehicle_info_.v = 0.0;
+      vehicle_info_.a = 0.0;
+    } else {
+      delta_s = v0 * dt + 0.5 * a0 * dt * dt + jerk * dt * dt * dt / 6.0;
+      vehicle_info_.v = v1;
+      vehicle_info_.a = a1;
+    }
   }
 
   if (std::abs(vehicle_info_.v) < 0.01 && std::abs(vehicle_info_.a) < 0.01) {
@@ -88,7 +115,7 @@ void EgoVehicle::setVelocity(double v)
 
 void EgoVehicle::setCommand(double a, double omega)
 {
-  vehicle_info_.a = a;
+  commanded_accel_ = a;
   vehicle_info_.omega = omega;
 }
 

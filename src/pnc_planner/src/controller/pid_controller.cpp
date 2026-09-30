@@ -13,52 +13,30 @@ double PidController::computeAccel(const Trajectory & traj, const VehicleInfo & 
     return -2.0;
   }
 
-  // 寻找自车附近的轨迹点
-  double cos_yaw = std::cos(ego.pose.yaw);
-  double sin_yaw = std::sin(ego.pose.yaw);
+  const std::size_t target_index = std::min<std::size_t>(1, traj.size() - 1);
 
-  size_t start = 0;
-  double min_dist = std::numeric_limits<double>::max();
+  const double feedforward_accel = traj[target_index].a;
 
-  for (size_t i = 0; i < traj.size(); ++i) {
-    double dx = traj[i].x - ego.pose.x;
-    double dy = traj[i].y - ego.pose.y;
-    double dist = dx * dx + dy * dy;
-    if (dist < min_dist) {
-      min_dist = dist;
-      start = i;
-    }
-  }
+  const double error = traj.front().v - ego.v;
 
-  // 确保轨迹点在车辆的前方
-  for (size_t i = start; i < traj.size(); ++i) {
-    double dx = traj[i].x - ego.pose.x;
-    double dy = traj[i].y - ego.pose.y;
-    double proj = dx * cos_yaw + dy * sin_yaw;
-    if (proj >= 0.0) {
-      start = i;
-      break;
-    }
-  }
+  // P
+  const double p_term = kp_ * error;
 
-  double target_v = traj[start].v;
-  double error = target_v - ego.v;
-
-  // pid控制
-  // p
-  double p_term = kp_ * error;
-
-  // i
+  // I
   integral_ += error * dt_;
   integral_ = std::clamp(integral_, -max_integral_, max_integral_);
-  double i_term = ki_ * integral_;
+  const double i_term = ki_ * integral_;
 
-  // d
-  double derivative = (error - previous_error_) / dt_;
+  // D
+  const double derivative = (error - previous_error_) / dt_;
   previous_error_ = error;
-  double d_term = kd_ * derivative;
+  const double d_term = kd_ * derivative;
 
-  double accel = p_term + i_term + d_term;
+  const double feedback_accel = p_term + i_term + d_term;
+
+  // 轨迹加速度前馈 + 速度误差反馈
+  const double accel = feedforward_accel + feedback_accel;
+
   return std::clamp(accel, min_acc_, max_acc_);
 }
 }  // namespace pnc_planner::controller

@@ -30,6 +30,8 @@ private:
   rclcpp::Node * node_;
   std::unique_ptr<tf2_ros::TransformBroadcaster> broadcaster_;
 
+  double commanded_accel_ = 0.0;
+
   VehicleInfo vehicle_info_;
 };
 

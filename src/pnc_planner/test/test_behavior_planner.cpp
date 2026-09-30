@@ -22,6 +22,8 @@ static pnc_planner::planning::behavior::BehaviorPlannerConfig CreateBehaviorPlan
   config.route_end_stop_buffer = 2.0;
   config.comfortable_decel = 3.0;
   config.stop_trigger_margin = 1.0;
+  config.planning_time = 5.0;
+  config.max_sampled_speed_offset = 2.0;
 
   return config;
 }

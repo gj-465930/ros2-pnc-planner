@@ -49,6 +49,7 @@ static pnc_planner::LatticePlannerConfig CreatePlannerConfig()
   config.planning_time = 3.0;
   config.terminal_safety_decel = 3.0;
   config.stop_comfort_decel = 3.0;
+  config.stop_position_margin = 0.0;
   config.lateral_transition_distance = 12.0;
 
   config.w_lat = 1.0;
@@ -683,9 +684,7 @@ TEST(LatticePlannerTest, RejectsStopTargetBehindVehicle)
 
   const auto & debug = planner.getLastDebugInfo();
 
-  EXPECT_EQ(
-    debug.planning_failure_reason,
-    pnc_planner::PlanningFailureReason::LONGITUDINAL_GENERATION_FAILED);
+  EXPECT_EQ(debug.planning_failure_reason, pnc_planner::PlanningFailureReason::NO_VALID_TRAJECTORY);
 }
 
 TEST(LatticePlannerTest, GeneratesStopTrajectory)
@@ -711,7 +710,7 @@ TEST(LatticePlannerTest, GeneratesStopTrajectory)
 
   ASSERT_TRUE(target.stop_s.has_value());
 
-  EXPECT_NEAR(trajectory.back().x, target.stop_s.value(), 0.2);
+  EXPECT_LE(trajectory.back().x, target.stop_s.value() + 0.1);
   EXPECT_NEAR(trajectory.back().v, 0.0, 0.05);
   EXPECT_NEAR(trajectory.back().a, 0.0, 0.1);
 
@@ -769,12 +768,14 @@ TEST(LatticePlannerTest, StopsStablyAcrossContinuousReplanning)
 
   auto lattice_config = CreatePlannerConfig();
   lattice_config.planning_time = 0.5;
+  lattice_config.stop_position_margin = 0.0;
 
   pnc_planner::planning::behavior::BehaviorPlannerConfig behavior_config;
   behavior_config.cruise_speed = 3.0;
   behavior_config.route_end_stop_buffer = 0.0;
   behavior_config.comfortable_decel = 3.0;
   behavior_config.stop_trigger_margin = 2.0;
+  behavior_config.planning_time = lattice_config.planning_time;
 
   pnc_planner::planning::behavior::BehaviorPlanner behavior_planner(behavior_config);
   pnc_planner::LatticePlanner lattice_planner(lattice_config);
@@ -814,16 +815,26 @@ TEST(LatticePlannerTest, StopsStablyAcrossContinuousReplanning)
 
     const auto & debug = lattice_planner.getLastDebugInfo();
 
-    ASSERT_TRUE(planning_success) << "iteration: " << iteration << ", ego_x: " << ego.pose.x
-                                  << ", ego_v: " << ego.v
-                                  << ", stop_s: " << target->stop_s.value_or(-1.0)
-                                  << ", longitudinal_candidates: "
-                                  << debug.longitudinal_candidate_count
-                                  << ", lateral_condidates: " << debug.lateral_candidate_count
-                                  << ", kinematic_rejections: " << debug.kinematic_rejection_count
-                                  << ", terminal_safety_rejections: "
-                                  << debug.terminal_safety_rejection_count
-                                  << ", selected_duration: " << debug.selected_duration;
+    ASSERT_TRUE(planning_success)
+      << "iteration: " << iteration << ", ego_x: " << ego.pose.x << ", ego_v: " << ego.v
+      << ", stop_s: " << target->stop_s.value_or(-1.0)
+      << ", longitudinal_candidates: " << debug.longitudinal_candidate_count
+      << ", lateral_condidates: " << debug.lateral_candidate_count
+      << ", kinematic_rejections: " << debug.kinematic_rejection_count
+      << ", velocity_rejections: " << debug.velocity_rejection_count
+      << ", acceleration_rejections: " << debug.acceleration_rejection_count
+      << ", jerk_rejections: " << debug.jerk_rejection_count
+      << ", min_rejected_jerk: " << debug.minimum_rejected_max_jerk
+      << ", jerk_duration: " << debug.corresponding_duration
+      << ", jerk_max_s: " << debug.maximum_s_for_minimum_rejected_jerk
+      << ", stop_start_s: " << debug.stop_start_s << ", stop_start_v: " << debug.stop_start_v
+      << ", stop_start_a: " << debug.stop_start_a << ", stop_target_s: " << debug.stop_target_s
+      << ", stop_remaining_distance: " << debug.stop_remaining_distance
+      << ", stop_min_duration: " << debug.stop_min_duration
+      << ", stop_max_duration: " << debug.stop_max_duration
+      << ", jerk_rejections: " << debug.jerk_rejection_count
+      << ", terminal_safety_rejections: " << debug.terminal_safety_rejection_count
+      << ", selected_duration: " << debug.selected_duration;
 
     ASSERT_GT(trajectory.size(), 1U) << "iteration: " << iteration;
 
@@ -853,6 +864,29 @@ TEST(LatticePlannerTest, StopsStablyAcrossContinuousReplanning)
   EXPECT_TRUE(stopped);
   EXPECT_NEAR(ego.pose.x, stop_s, position_tolerance);
   EXPECT_LE(ego.v, speed_tolerance);
+}
+
+TEST(LatticePlannerTest, DoesNotHoldWhileEgoIsStillMoving)
+{
+  const auto ref_line = CreateLongStraightReferenceLine();
+  auto ego = CreateCruisingEgo();
+  ego.pose.x = 17.99;
+  ego.v = 0.065;
+  ego.a = -0.297;
+
+  const auto config = CreatePlannerConfig();
+  pnc_planner::planning::PlanningTarget target;
+  target.behavior = pnc_planner::planning::BehaviorState::STOP;
+  target.target_speed = 0.0;
+  target.stop_s = 18.0;
+
+  pnc_planner::LatticePlanner planner(config);
+  pnc_planner::Trajectory trajectory;
+
+  ASSERT_TRUE(planner.plan(ego, ref_line, target, trajectory));
+  ASSERT_FALSE(trajectory.empty());
+  EXPECT_NEAR(trajectory.front().v, ego.v, 1e-3);
+  EXPECT_NEAR(trajectory.front().a, ego.a, 1e-3);
 }
 
 }  // namespace

@@ -135,8 +135,7 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_lateral_trajectori
 }
 
 std::vector<math::QuinticPolynomial> LatticePlanner::generate_longitudinal_trajectories(
-  const VehicleInfo & ego, const ReferenceLine & ref_line,
-  const planning::PlanningTarget & target) const
+  const VehicleInfo & ego, const ReferenceLine & ref_line, const planning::PlanningTarget & target)
 {
   switch (target.behavior) {
     case planning::BehaviorState::CRUISE:
@@ -169,14 +168,17 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_cruise_trajectorie
 
   const double cruise_speed = target.target_speed;
 
-  const std::vector<double> sample_v = {
-    cruise_speed - 2.0, cruise_speed - 1.0, cruise_speed, cruise_speed + 1.0, cruise_speed + 2.0};
-
   const double planning_time = config_.planning_time;
 
-  lon_cruise_trajs.reserve(sample_v.size());
+  lon_cruise_trajs.reserve(config_.speed_sample_offsets.size());
 
-  for (const double v1 : sample_v) {
+  for (const double speed_offset : config_.speed_sample_offsets) {
+    const double v1 = cruise_speed + speed_offset;
+
+    if (v1 < config_.min_v || v1 > config_.max_v) {
+      continue;
+    }
+
     const double s1 = s0 + ((v0 + v1) / 2.0) * planning_time;
     constexpr double a1 = 0.0;
 
@@ -190,8 +192,7 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_cruise_trajectorie
 }
 
 std::vector<math::QuinticPolynomial> LatticePlanner::generate_stop_trajectories(
-  const VehicleInfo & ego, const ReferenceLine & ref_line,
-  const planning::PlanningTarget & target) const
+  const VehicleInfo & ego, const ReferenceLine & ref_line, const planning::PlanningTarget & target)
 {
   std::vector<math::QuinticPolynomial> stop_trajectories;
 
@@ -214,31 +215,40 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_stop_trajectories(
     return stop_trajectories;
   }
 
-  const double stop_s = *target.stop_s;
+  const double requested_stop_s = *target.stop_s;
 
-  if (stop_s < 0.0 || stop_s > ref_line.getTotalLength()) {
+  const double candidate_stop_s = std::max(ego_s, requested_stop_s - config_.stop_position_margin);
+
+  if (candidate_stop_s < 0.0 || candidate_stop_s > ref_line.getTotalLength()) {
     return stop_trajectories;
   }
 
   constexpr double position_tolerance = 0.1;
-  constexpr double speed_tolerance = 0.1;
   constexpr double hold_duration = 1.0;
 
-  const double remaining_distance = stop_s - ego_s;
+  const double remaining_distance = candidate_stop_s - ego_s;
+
+  debug_info_.stop_start_s = ego_s;
+  debug_info_.stop_start_v = ego.v;
+  debug_info_.stop_start_a = ego.a;
+  debug_info_.stop_target_s = candidate_stop_s;
+  debug_info_.stop_remaining_distance = remaining_distance;
 
   if (remaining_distance < -position_tolerance) {
     return stop_trajectories;
   }
 
+  constexpr double stationary_speed_tolerance = 0.01;
+  // 保持轨迹
   if (std::abs(remaining_distance) <= position_tolerance) {
-    if (std::abs(ego.v) <= speed_tolerance) {
+    if (std::abs(ego.v) <= stationary_speed_tolerance) {
       stop_trajectories.emplace_back(ego_s, 0.0, 0.0, ego_s, 0.0, 0.0, hold_duration);
 
       return stop_trajectories;
     }
   }
 
-  if (ego.v <= speed_tolerance) {
+  if (ego.v <= stationary_speed_tolerance) {
     return stop_trajectories;
   }
 
@@ -246,15 +256,25 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_stop_trajectories(
   const double distance_duration = remaining_distance / (ego.v / 2.0);
   const double base_duration = std::max(deceleration_duration, distance_duration);
 
-  constexpr std::size_t sample_count = 21;
-  constexpr double duration_step = 0.1;
+  constexpr double duration_step = 0.025;
+
+  const double duration_horizon = std::isfinite(config_.planning_time)
+                                    ? std::max(base_duration, config_.planning_time)
+                                    : base_duration;
+
+  const std::size_t sample_count =
+    static_cast<std::size_t>(std::ceil((duration_horizon - base_duration) / duration_step)) + 1;
+
+  debug_info_.stop_min_duration = base_duration;
+  debug_info_.stop_max_duration =
+    base_duration + duration_step * static_cast<double>(sample_count - 1);
 
   stop_trajectories.reserve(sample_count);
 
   for (std::size_t index = 0; index < sample_count; ++index) {
     const double duration = base_duration + duration_step * static_cast<double>(index);
 
-    stop_trajectories.emplace_back(ego_s, ego.v, ego.a, stop_s, 0.0, 0.0, duration);
+    stop_trajectories.emplace_back(ego_s, ego.v, ego.a, candidate_stop_s, 0.0, 0.0, duration);
   }
 
   return stop_trajectories;
@@ -276,12 +296,44 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
 
       ++debug_info_.evaluated_pair_count;
 
+      double max_abs_jerk = 0.0;
+      double maximum_s = lon_traj.evaluate(0.0);
+      constexpr double jerk_sample_dt = 0.1;
+
+      for (double t = 0.0; t <= lon_traj.get_T(); t += jerk_sample_dt) {
+        max_abs_jerk = std::max(max_abs_jerk, std::abs(lon_traj.evaluate_ddd(t)));
+        maximum_s = std::max(maximum_s, lon_traj.evaluate(t));
+      }
+
+      const double terminal_jerk = std::abs(lon_traj.evaluate_ddd(lon_traj.get_T()));
+      max_abs_jerk = std::max(max_abs_jerk, terminal_jerk);
+      const double terminal_s = lon_traj.evaluate(lon_traj.get_T());
+      maximum_s = std::max(maximum_s, terminal_s);
+
       switch (is_trajectory_valid(lat_traj, lon_traj, target)) {
         case TrajectoryValidationResult::VALID:
           break;
 
-        case TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED:
+        case TrajectoryValidationResult::VELOCITY_CONSTRAINT_VIOLATED:
           ++debug_info_.kinematic_rejection_count;
+          ++debug_info_.velocity_rejection_count;
+          continue;
+
+        case TrajectoryValidationResult::ACCELERATION_CONSTRAINT_VIOLATED:
+          ++debug_info_.kinematic_rejection_count;
+          ++debug_info_.acceleration_rejection_count;
+          continue;
+
+        case TrajectoryValidationResult::JERK_CONSTRAINT_VIOLATED:
+          if (
+            debug_info_.minimum_rejected_max_jerk == 0.0 ||
+            max_abs_jerk < debug_info_.minimum_rejected_max_jerk) {
+            debug_info_.minimum_rejected_max_jerk = max_abs_jerk;
+            debug_info_.corresponding_duration = lon_traj.get_T();
+            debug_info_.maximum_s_for_minimum_rejected_jerk = maximum_s;
+          }
+          ++debug_info_.kinematic_rejection_count;
+          ++debug_info_.jerk_rejection_count;
           continue;
 
         case TrajectoryValidationResult::COLLISION:
@@ -293,7 +345,22 @@ std::pair<int, int> LatticePlanner::evaluate_and_select_best_trajectory(
           continue;
 
         case TrajectoryValidationResult::UNSAFE_TERMINAL_STATE:
+          if (target.behavior == planning::BehaviorState::STOP && target.stop_s.has_value()) {
+            const double overshoot = maximum_s - *target.stop_s;
+            if (
+              overshoot > 0.0 && (debug_info_.minimum_terminal_overshoot == 0.0 ||
+                                  debug_info_.minimum_terminal_overshoot > overshoot)) {
+              debug_info_.minimum_terminal_overshoot = overshoot;
+              debug_info_.corresponding_terminal_duration = lon_traj.get_T();
+              debug_info_.corresponding_terminal_rejected_max_jerk = max_abs_jerk;
+            }
+          }
+
           ++debug_info_.terminal_safety_rejection_count;
+          continue;
+
+        case TrajectoryValidationResult::LATERAL_OFFSET_CONSTRAINT_VIOLATED:
+          ++debug_info_.kinematic_rejection_count;
           continue;
       }
 
@@ -341,6 +408,7 @@ LatticePlanner::TrajectoryValidationResult LatticePlanner::is_trajectory_valid(
   constexpr double dt = 0.1;
 
   const double s0 = lon_traj.evaluate(0.0);
+  double maximum_s = s0;
 
   for (double t = 0.0; t <= T; t += dt) {
     // 纵向有效性判断
@@ -349,26 +417,22 @@ LatticePlanner::TrajectoryValidationResult LatticePlanner::is_trajectory_valid(
     const double jerk = lon_traj.evaluate_ddd(t);
 
     if (v < config_.min_v - constraint_tolerance || v > config_.max_v + constraint_tolerance) {
-      return TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED;
+      return TrajectoryValidationResult::VELOCITY_CONSTRAINT_VIOLATED;
     }
     if (a < config_.min_acc - constraint_tolerance || a > config_.max_acc + constraint_tolerance) {
-      return TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED;
+      return TrajectoryValidationResult::ACCELERATION_CONSTRAINT_VIOLATED;
     }
     if (std::abs(jerk) > config_.max_jerk + constraint_tolerance) {
-      return TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED;
+      return TrajectoryValidationResult::JERK_CONSTRAINT_VIOLATED;
     }
 
     const double s = lon_traj.evaluate(t);
+    maximum_s = std::max(maximum_s, s);
 
     if (target.behavior == planning::BehaviorState::STOP) {
       if (v < -constraint_tolerance) {
         // 倒车
-        return TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED;
-      }
-
-      if (target.stop_s.has_value() && s > target.stop_s.value() + constraint_tolerance) {
-        // 轨迹点在停车点后面
-        return TrajectoryValidationResult::UNSAFE_TERMINAL_STATE;
+        return TrajectoryValidationResult::VELOCITY_CONSTRAINT_VIOLATED;
       }
     }
 
@@ -377,7 +441,7 @@ LatticePlanner::TrajectoryValidationResult LatticePlanner::is_trajectory_valid(
     const double l = lat_traj.evaluate(lateral_progress);
 
     if (std::abs(l) > config_.max_lat_offset + constraint_tolerance) {
-      return TrajectoryValidationResult::KINEMATIC_CONSTRAINT_VIOLATED;
+      return TrajectoryValidationResult::LATERAL_OFFSET_CONSTRAINT_VIOLATED;
     }
 
     // 碰撞检查
@@ -396,6 +460,12 @@ LatticePlanner::TrajectoryValidationResult LatticePlanner::is_trajectory_valid(
         }
       }
     }
+  }
+
+  if (
+    target.behavior == planning::BehaviorState::STOP && target.stop_s.has_value() &&
+    maximum_s > target.stop_s.value() + constraint_tolerance) {
+    return TrajectoryValidationResult::UNSAFE_TERMINAL_STATE;
   }
 
   if (!std::isfinite(config_.terminal_safety_decel) || config_.terminal_safety_decel <= 0.0) {

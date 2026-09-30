@@ -6,6 +6,7 @@
 
 #include "nav_msgs/msg/path.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -17,9 +18,11 @@ namespace pnc_planner
 {
 PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 {
-  // 声明参数
+  // lattice_planner
   declare_parameter<std::vector<double>>(
     "lattice_planner.lateral_samples", std::vector<double>{3.5, 0.0, -3.5});
+  declare_parameter<std::vector<double>>(
+    "lattice_planner.speed_sample_offsets", std::vector<double>{-2.0, -1.0, 0.0, 1.0, 2.0});
 
   // limits
   declare_parameter("lattice_planner.limits.max_v", 35.0);
@@ -32,6 +35,7 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   declare_parameter("lattice_planner.limits.planning_time", 5.0);
   declare_parameter("lattice_planner.limits.terminal_safety_decel", 3.0);
   declare_parameter("lattice_planner.limits.stop_comfort_decel", 3.0);
+  declare_parameter("lattice_planner.limits.stop_position_margin", 0.0);
   declare_parameter("lattice_planner.limits.lateral_transition_distance", 12.0);
   // weights
   declare_parameter("planning_failure_fallback_decel", -3.0);
@@ -52,32 +56,38 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   declare_parameter("behavior_planner.cruise_speed", 15.0);
   declare_parameter("behavior_planner.route_end_stop_buffer", 2.0);
   declare_parameter("behavior_planner.comfortable_decel", 3.0);
-  declare_parameter("behavior_planner.stop_trigger_margin", 1.0);
+  declare_parameter("behavior_planner.stop_trigger_margin", 2.2);
 
   // 读取参数
-  LatticePlannerConfig config;
-  config.lateral_samples = get_parameter("lattice_planner.lateral_samples").as_double_array();
+  LatticePlannerConfig lattice_config;
+  lattice_config.lateral_samples =
+    get_parameter("lattice_planner.lateral_samples").as_double_array();
+  lattice_config.speed_sample_offsets =
+    get_parameter("lattice_planner.speed_sample_offsets").as_double_array();
 
-  config.max_v = get_parameter("lattice_planner.limits.max_v").as_double();
-  config.min_v = get_parameter("lattice_planner.limits.min_v").as_double();
-  config.max_acc = get_parameter("lattice_planner.limits.max_acc").as_double();
-  config.min_acc = get_parameter("lattice_planner.limits.min_acc").as_double();
-  config.max_jerk = get_parameter("lattice_planner.limits.max_jerk").as_double();
-  config.max_lat_offset = get_parameter("lattice_planner.limits.max_lat_offset").as_double();
-  config.target_speed = get_parameter("lattice_planner.limits.target_speed").as_double();
-  config.planning_time = get_parameter("lattice_planner.limits.planning_time").as_double();
-  config.terminal_safety_decel =
+  lattice_config.max_v = get_parameter("lattice_planner.limits.max_v").as_double();
+  lattice_config.min_v = get_parameter("lattice_planner.limits.min_v").as_double();
+  lattice_config.max_acc = get_parameter("lattice_planner.limits.max_acc").as_double();
+  lattice_config.min_acc = get_parameter("lattice_planner.limits.min_acc").as_double();
+  lattice_config.max_jerk = get_parameter("lattice_planner.limits.max_jerk").as_double();
+  lattice_config.max_lat_offset =
+    get_parameter("lattice_planner.limits.max_lat_offset").as_double();
+  lattice_config.target_speed = get_parameter("lattice_planner.limits.target_speed").as_double();
+  lattice_config.planning_time = get_parameter("lattice_planner.limits.planning_time").as_double();
+  lattice_config.terminal_safety_decel =
     get_parameter("lattice_planner.limits.terminal_safety_decel").as_double();
-  config.stop_comfort_decel =
+  lattice_config.stop_comfort_decel =
     get_parameter("lattice_planner.limits.stop_comfort_decel").as_double();
-  config.lateral_transition_distance =
+  lattice_config.stop_position_margin =
+    get_parameter("lattice_planner.limits.stop_position_margin").as_double();
+  lattice_config.lateral_transition_distance =
     get_parameter("lattice_planner.limits.lateral_transition_distance").as_double();
 
-  config.w_lat = get_parameter("lattice_planner.weights.w_lat").as_double();
-  config.w_lon = get_parameter("lattice_planner.weights.w_lon").as_double();
-  config.w_offset = get_parameter("lattice_planner.weights.w_offset").as_double();
-  config.w_speed = get_parameter("lattice_planner.weights.w_speed").as_double();
-  config.w_lateral_target_change =
+  lattice_config.w_lat = get_parameter("lattice_planner.weights.w_lat").as_double();
+  lattice_config.w_lon = get_parameter("lattice_planner.weights.w_lon").as_double();
+  lattice_config.w_offset = get_parameter("lattice_planner.weights.w_offset").as_double();
+  lattice_config.w_speed = get_parameter("lattice_planner.weights.w_speed").as_double();
+  lattice_config.w_lateral_target_change =
     get_parameter("lattice_planner.weights.w_lateral_target_change").as_double();
 
   planning_failure_fallback_decel_ = get_parameter("planning_failure_fallback_decel").as_double();
@@ -91,7 +101,7 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   }
 
   // config.lateral_samples校验
-  if (config.lateral_samples.empty()) {
+  if (lattice_config.lateral_samples.empty()) {
     throw std::runtime_error("lattice_planner.lateral_samples must not be empty");
   }
 
@@ -99,14 +109,14 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   // ReSharper disable once CppTooWideScope
   constexpr double kLateralSampleTolerance = 1e-9;
 
-  for (std::size_t index = 0; index < config.lateral_samples.size(); ++index) {
-    const double sample = config.lateral_samples[index];
+  for (std::size_t index = 0; index < lattice_config.lateral_samples.size(); ++index) {
+    const double sample = lattice_config.lateral_samples[index];
 
     if (!std::isfinite(sample)) {
       throw std::runtime_error("lattice_planner.lateral_samples must contain only finite values");
     }
 
-    if (std::abs(sample) > config.max_lat_offset + kLateralSampleTolerance) {
+    if (std::abs(sample) > lattice_config.max_lat_offset + kLateralSampleTolerance) {
       throw std::runtime_error(
         "lattice_planner.lateral_samples[" + std::to_string(index) +
         "] exceeds config.max_lat_offset");
@@ -117,13 +127,24 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
     }
 
     for (std::size_t previous = 0; previous < index; ++previous) {
-      if (std::abs(sample - config.lateral_samples[previous]) < kLateralSampleTolerance) {
+      if (std::abs(sample - lattice_config.lateral_samples[previous]) < kLateralSampleTolerance) {
         throw std::runtime_error("lattice_planner.lateral_samples contains duplicate values");
       }
     }
   }
   if (!contains_zero) {
     throw std::runtime_error("lattice_planner.lateral_samples must contain 0.0");
+  }
+
+  // config.speed_sample_offsets校验
+  if (lattice_config.speed_sample_offsets.empty()) {
+    throw std::runtime_error("lattice_planner.speed_sample_offsets must not be empty");
+  }
+
+  for (const double offset : lattice_config.speed_sample_offsets) {
+    if (!std::isfinite(offset)) {
+      throw std::runtime_error("lattice_planner.speed_sample_offests must contain finite values");
+    }
   }
 
   // behavior参数读取
@@ -135,8 +156,11 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
     get_parameter("behavior_planner.comfortable_decel").as_double();
   behavior_config.stop_trigger_margin =
     get_parameter("behavior_planner.stop_trigger_margin").as_double();
+  behavior_config.planning_time = lattice_config.planning_time;
+  behavior_config.max_sampled_speed_offset = *std::max_element(
+    lattice_config.speed_sample_offsets.begin(), lattice_config.speed_sample_offsets.end());
 
-  lattice_planner_ = std::make_shared<LatticePlanner>(config);
+  lattice_planner_ = std::make_shared<LatticePlanner>(lattice_config);
   behavior_planner_ = std::make_unique<planning::behavior::BehaviorPlanner>(behavior_config);
 
   // 初始化自车
@@ -199,7 +223,7 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   // 初始化控制器
   lateral_ctrl_ = std::make_unique<controller::PurePursuitController>(3.0, 0.8, 2.8);
   longitudinal_controller_ = std::make_unique<controller::PidController>(
-    2.0, 0.1, 0.05, 0.1, 3.0, config.max_acc, config.min_acc);
+    2.0, 0.1, 0.05, 0.1, 3.0, lattice_config.max_acc, lattice_config.min_acc);
 
   visualizer_ = std::make_shared<Visualizer>(*this);
   if (obstacles_ready_) {
@@ -232,6 +256,8 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
 
 void PncPlannerNode::timerCallback()
 {
+  ++planning_cycle_;
+
   if (!route_ready_ || !initial_state_ready_ || !obstacles_ready_) {
     return;
   }
@@ -252,8 +278,8 @@ void PncPlannerNode::timerCallback()
   // 规划
   if (!result.has_value()) {
     planned_traj_.clear();
-    RCLCPP_WARN_THROTTLE(
-      this->get_logger(), *this->get_clock(), 1000,
+    RCLCPP_WARN(
+      this->get_logger(),
       "Behavior planning failed; cleared stale trajectory and applying fallback decel %.2f",
       planning_failure_fallback_decel_);
 
@@ -292,7 +318,7 @@ void PncPlannerNode::timerCallback()
 
       if (ref_line_->getFrenetPoint(ego.pose.x, ego.pose.y, ego_s, ego_l)) {
         RCLCPP_INFO(
-          this->get_logger(), "Behavior changed to STOPL stop_s=%.2f, remaining_distance=%.2f",
+          this->get_logger(), "Behavior changed to STOP stop_s=%.2f, remaining_distance=%.2f",
           target.stop_s.value(), target.stop_s.value() - ego_s);
       } else {
         RCLCPP_WARN(
@@ -316,12 +342,14 @@ void PncPlannerNode::timerCallback()
   visualizer_->publishCandidateTrajectories(debug.valid_candidate_trajectories);
 
   if (planning_success && !candidate_traj.empty()) {
-    RCLCPP_INFO_THROTTLE(
-      this->get_logger(), *this->get_clock(), 1000,
-      "Planning succeeded: evaluated=%zu, valid=%zu, selected_l=%.2f, duration=%.2f, cost=%.3f, "
-      "planning_ms=%.3f",
+    RCLCPP_INFO(
+
+      this->get_logger(),
+      "[cycle=%zu][%s] plan ok: evaluated=%zu, valid=%zu, "
+      "selected_l=%.2f, duration=%.2f, cost=%.3f",
+      planning_cycle_, target.behavior == planning::BehaviorState::STOP ? "STOP" : "CRUISE",
       debug.evaluated_pair_count, debug.valid_pair_count, debug.selected_lateral_target,
-      debug.selected_duration, debug.selected_cost, planning_time_ms);
+      debug.selected_duration, debug.selected_cost);
 
     planned_traj_ = candidate_traj;
 
@@ -329,27 +357,54 @@ void PncPlannerNode::timerCallback()
     publishTrajectory(planned_traj_);
     // 跟踪
     trackTrajectory(dt);
+
+    if (target.behavior == planning::BehaviorState::STOP && target.stop_s) {
+      const auto updated_ego = ego_vehicle_->getVehicleState();
+      double next_s = 0.0;
+      double next_l = 0.0;
+
+      if (ref_line_->getFrenetPoint(updated_ego.pose.x, updated_ego.pose.y, next_s, next_l)) {
+        RCLCPP_INFO(
+          this->get_logger(), "[cycle=%zu][STOP] x=%.5f, s=%.5f, stop_s=%.5f, error=%.5f, v=%.6f",
+          planning_cycle_, updated_ego.pose.x, next_s, *target.stop_s, next_s - *target.stop_s,
+          updated_ego.v);
+      }
+    }
     return;
   }
 
   planned_traj_.clear();
 
-  RCLCPP_WARN_THROTTLE(
-    this->get_logger(), *this->get_clock(), 1000,
-    "Planning failed: ego=(%.2f, %.2f), yaw=%.2f, "
-    "lat=%zu, lon=%zu, evaluated=%zu, valid=%zu, "
-    "kinematic=%zu, conversion=%zu, collision=%zu, "
-    "terminal=%zu; cleared stale trajectory and "
-    "applying fallback decel %.2f, "
-    "planning_ms= %.3f",
-    ego.pose.x, ego.pose.y, ego.pose.yaw, debug.lateral_candidate_count,
-    debug.longitudinal_candidate_count, debug.evaluated_pair_count, debug.valid_pair_count,
-    debug.kinematic_rejection_count, debug.conversion_rejection_count,
-    debug.collision_rejection_count, debug.terminal_safety_rejection_count,
-    planning_failure_fallback_decel_, planning_time_ms);
+  RCLCPP_WARN(
+    this->get_logger(),
+    "[cycle=%zu][%s] plan failed: ego=(%.2f, v=%.3f, a=%.3f), "
+    "lon=%zu, evaluated=%zu, valid=%zu, "
+    "velocity=%zu, acceleration=%zu, jerk=%zu, terminal=%zu",
+    planning_cycle_, target.behavior == planning::BehaviorState::STOP ? "STOP" : "CRUISE",
+    ego.pose.x, ego.v, ego.a, debug.longitudinal_candidate_count, debug.evaluated_pair_count,
+    debug.valid_pair_count, debug.velocity_rejection_count, debug.acceleration_rejection_count,
+    debug.jerk_rejection_count, debug.terminal_safety_rejection_count);
+
+  RCLCPP_DEBUG(
+    this->get_logger(),
+    "[cycle=%zu][STOP][details] "
+    "min_rejected_jerk=%.3f, jerk_duration=%.3f, jerk_max_s=%.3f, "
+    "min_overshoot=%.3f, terminal_duration=%.3f, "
+    "terminal_rejected_max_jerk=%.3f, planning_ms=%.3f",
+    planning_cycle_, debug.minimum_rejected_max_jerk, debug.corresponding_duration,
+    debug.maximum_s_for_minimum_rejected_jerk, debug.minimum_terminal_overshoot,
+    debug.corresponding_terminal_duration, debug.corresponding_terminal_rejected_max_jerk,
+    planning_time_ms);
 
   ego_vehicle_->setCommand(planning_failure_fallback_decel_, 0.0);
   ego_vehicle_->updateState(dt);
+
+  const auto fallback_state = ego_vehicle_->getVehicleState();
+
+  RCLCPP_WARN(
+    this->get_logger(), "[cycle=%zu][FALLBACK] decel=%.3f, next ego=(%.3f, v=%.3f, a=%.3f)",
+    planning_cycle_, planning_failure_fallback_decel_, fallback_state.pose.x, fallback_state.v,
+    fallback_state.a);
 }
 
 bool PncPlannerNode::updateReferenceLine(const std::vector<geometry_msgs::msg::Point> & points)
@@ -488,6 +543,19 @@ void PncPlannerNode::trackTrajectory(const double dt)
 
   ego_vehicle_->setCommand(a, omega);
   ego_vehicle_->updateState(dt);
+
+  if (last_behavior_state_ == planning::BehaviorState::STOP && !planned_traj_.empty()) {
+    const std::size_t target_index = std::min<std::size_t>(1, planned_traj_.size() - 1);
+    const VehicleInfo next_ego = ego_vehicle_->getVehicleState();
+
+    RCLCPP_INFO(
+      this->get_logger(),
+      "[cycle=%zu][STOP][TRACK] ego_v=%.3f, ego_a=%.3f, "
+      "traj_v0=%.3f, target_v=%.3f, target_a=%.3f, "
+      "cmd_a=%.3f, next_v=%.3f",
+      planning_cycle_, ego.v, ego.a, planned_traj_.front().v, planned_traj_[target_index].v,
+      planned_traj_[target_index].a, a, next_ego.v);
+  }
 }
 
 void PncPlannerNode::initialStateCallback(

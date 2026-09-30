@@ -19,7 +19,7 @@ bool CartesianFrenetConverter::cartesianToFrenet(
   double best_s = 0.0;  // 当前找到的最近点的s值
   double min_dist_sq = std::numeric_limits<double>::max();
   // 步长
-  std::vector<double> steps = {1.0, 0.1, 0.01};
+  std::vector<double> steps = {1.0, 0.1, 0.01, 0.001};
 
   double serach_start = 0.0;
   double serach_end = max_s;

@@ -15,6 +15,8 @@ struct BehaviorPlannerConfig
   double route_end_stop_buffer = 0.0;
   double comfortable_decel = 0.0;
   double stop_trigger_margin = 0.0;
+  double planning_time = 0.0;
+  double max_sampled_speed_offset = 0.0;
 };
 
 class BehaviorPlanner
@@ -23,8 +25,7 @@ public:
   explicit BehaviorPlanner(const BehaviorPlannerConfig & config);
 
   std::optional<PlanningTarget> plan(
-    const pnc_planner::VehicleInfo & ego,
-    const pnc_planner::ReferenceLine & reference_line);
+    const pnc_planner::VehicleInfo & ego, const pnc_planner::ReferenceLine & reference_line);
 
   void reset();
 

@@ -13,7 +13,8 @@ bool BehaviorPlanner::isConfigValid() const
   return std::isfinite(config_.cruise_speed) && config_.cruise_speed >= 0.0 &&
          std::isfinite(config_.route_end_stop_buffer) && config_.route_end_stop_buffer >= 0.0 &&
          std::isfinite(config_.comfortable_decel) && config_.comfortable_decel > 0.0 &&
-         std::isfinite(config_.stop_trigger_margin) && config_.stop_trigger_margin >= 0.0;
+         std::isfinite(config_.stop_trigger_margin) && config_.stop_trigger_margin >= 0.0 &&
+         std::isfinite(config_.planning_time) && config_.planning_time > 0.0;
 }
 
 std::optional<PlanningTarget> BehaviorPlanner::plan(
@@ -57,10 +58,16 @@ std::optional<PlanningTarget> BehaviorPlanner::plan(
   }
 
   const double braking_distance = ego.v * ego.v / (2 * config_.comfortable_decel);
-
   const double remaining_distance = stop_s - ego_s;
 
-  if (remaining_distance <= braking_distance + config_.stop_trigger_margin) {
+  const double max_sampled_speed = config_.max_sampled_speed_offset + config_.cruise_speed;
+  const double planning_horizon_distance =
+    config_.planning_time * (max_sampled_speed + ego.v) * 0.5;
+  const bool braking_should_start =
+    remaining_distance <= braking_distance + config_.stop_trigger_margin;
+  const bool planning_horizon_reaches_stop = remaining_distance <= planning_horizon_distance;
+
+  if (braking_should_start || planning_horizon_reaches_stop) {
     stop_latched_ = true;
 
     PlanningTarget target;

@@ -15,7 +15,7 @@ Visualizer::Visualizer(rclcpp::Node & node) : node_(node)
   path_pub_ = node_.create_publisher<nav_msgs::msg::Path>("reference_line_path", qos);
   traj_pub_ = node_.create_publisher<nav_msgs::msg::Path>("trajectory_path", 10);
   candidate_marker_pub_ =
-    node_.create_publisher<visualization_msgs::msg::MarkerArray>("lattice_candidate_markers", 10);
+    node_.create_publisher<visualization_msgs::msg::MarkerArray>("lrottice_candidate_markers", 10);
   obstacle_marker_pub_ =
     node_.create_publisher<visualization_msgs::msg::MarkerArray>("static_obstacle_markers", qos);
   stop_point_marker_pub_ =

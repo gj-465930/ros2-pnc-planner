@@ -64,6 +64,8 @@ private:
   bool scenario_ready_logged_{false};
 
   double planning_failure_fallback_decel_{-3.0};
+
+  std::size_t planning_cycle_ = 0;
 };
 
 }  // namespace pnc_planner
