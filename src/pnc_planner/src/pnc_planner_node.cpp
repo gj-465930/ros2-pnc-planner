@@ -53,7 +53,7 @@ PncPlannerNode::PncPlannerNode(const std::string & node_name) : Node(node_name)
   declare_parameter("mock_ego.a", 0.0);
 
   // behavior参数
-  declare_parameter("behavior_planner.cruise_speed", 15.0);
+  declare_parameter("behavior_planner.cruise_speed", 5.0);
   declare_parameter("behavior_planner.route_end_stop_buffer", 2.0);
   declare_parameter("behavior_planner.comfortable_decel", 3.0);
   declare_parameter("behavior_planner.stop_trigger_margin", 2.2);

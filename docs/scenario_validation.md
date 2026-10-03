@@ -3,6 +3,105 @@
 这里记录第一版 YAML 场景链路的运行和排查结果。目前主要通过 ROS2 topic、节点日志、TF
 和 RViz 检查运行状态，还没有接入自动 metrics 和批量测试。
 
+## 最新验证结果（2026-10-03）
+
+正常路线终点停车已实现并完成闭环验证。BehaviorPlanner 给出 CRUISE/STOP 目标，
+LatticePlanner 生成对应轨迹，控制器执行正常停车；规划失败后的 fallback 仍是独立路径。
+本节为当前结论，后文历史记录保留此前的失败现象和排查依据。
+
+本轮主要参数：规划时域 5 s，巡航目标速度 5 m/s，横向采样 `[3.5, 0.0, -3.5]`，
+横向过渡距离 12 m，终点缓冲 2 m，fallback 减速度 -3 m/s²。
+STOP 时长采样以估算时长为起点，至少向后搜索 1 s，步长为 0.025 s；
+候选仍需通过速度、加速度、jerk、碰撞和终端安全检查。
+
+### 核心自动测试
+
+六个 gtest target、51 个用例全部通过，0 failures、0 errors：
+
+| 模块 | 通过用例 |
+|---|---:|
+| QuinticPolynomial | 2/2 |
+| CartesianFrenet | 4/4 |
+| ReferenceLine | 5/5 |
+| LatticePlanner | 19/19 |
+| ScenarioLoader | 16/16 |
+| BehaviorPlanner | 5/5 |
+
+覆盖连续停车重规划、STOP 锁存、移动自车不能被过早替换为保持轨迹、停车点附近投影精度、
+静态避障和规划失败清空输出。功能测试通过不等于全仓库 lint 已通过。
+
+```zsh
+colcon build --packages-select pnc_planner \
+  --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+source install/setup.zsh
+colcon test --packages-select pnc_planner \
+  --event-handlers console_direct+ \
+  --ctest-args -R '^test_(behavior_planner|lattice_planner|reference_line|cartesian_frenet|quintic_polynomial|scenario_loader)$' \
+  --output-on-failure
+```
+
+### 场景闭环结果
+
+| 场景 | 结果 | 最终状态与依据 |
+|---|---|---|
+| end_of_route | Pass | x≈17.99921 m，s≈17.999 m，stop_s=18 m，v=0，无 fallback |
+| straight_cruise | Pass | 中心线巡航后正常 STOP；s≈57.999 m，stop_s=58 m，v=0，无 fallback |
+| curve_cruise | Pass | 曲线巡航后正常 STOP；s≈39.026 m，stop_s≈39.02694 m，v=0，无 fallback |
+| static_obstacle_avoid | Pass | 持续选择 l=3.5 后恢复 l=0；s≈57.998 m，stop_s=58 m，v=0，无 fallback |
+| static_obstacle_blocked | Pass | 无有效候选，执行 fallback；x≈4.415 m，v=0，停稳后位置不变 |
+
+直线、曲线和绕行场景在扩展 STOP 时长采样后重新运行，分别在独立 ROS_DOMAIN_ID 下
+执行约 35 s。日志验证了候选选择、状态更新和正常停车；绕行可视化沿用此前人工/RViz
+证据，本轮没有新增自动轨迹净距或跟踪误差指标。
+
+### 正常终点停车
+
+`end_of_route` 的初始状态现为 x=14 m、v=3 m/s、a=0，参考线长 20 m，停车目标 s=18 m。
+该起点即满足 STOP 触发条件，首轮直接进入 STOP；CRUISE → STOP 的切换由另外三个
+巡航场景和 BehaviorPlanner 测试覆盖。停车全过程未出现 planning failed 或 fallback。
+最终 s 误差约 -0.001 m，速度归零，后续保持轨迹规划成功。
+
+最新日志证据：
+
+```text
+Behavior changed to STOP stop_s=18.00, remaining_distance=4.00
+[cycle=161][STOP] x=17.99921, s=17.99900, stop_s=18.00000, error=-0.00100, v=0.000000
+```
+
+### 阻塞场景与 fallback
+
+`static_obstacle_blocked` 的障碍物中心由 (5, 0) 调整为 (12, 0)，length=8 m、width=4 m，
+初始自车为 x=0、v=5 m/s。旧位置的中心距离 5 m 已小于当前碰撞阈值 5.5 m，
+旧记录只能证明失败处理，不能证明无碰撞停车。
+
+新场景首轮 15 组候选全部被过滤，节点失败分支清空已保存轨迹并执行 -3 m/s² fallback。
+完整运行未出现 plan ok，持续减速，到 cycle=164 停在 x≈4.415 m，随后位置保持稳定。
+清空轨迹的契约由代码检查及已有 gtest 覆盖。
+
+当前简化碰撞判定使用中心距离阈值 `(3.0 + obstacle.length) / 2.0 = 5.5 m`。
+该场景初始 y=0、yaw=0，fallback 横摆角速度为零；结合最大前进位置，最小中心距离
+约为 `12 - 4.415 = 7.585 m`，大于阈值，余量约 2.085 m。
+这是基于本次直线执行和当前距离模型的推算，尚未接入自动碰撞指标，也不等于
+矩形几何或连续碰撞检测验证。
+
+该场景验证的是规划失败后的 fallback 停车，不代表已实现正常障碍物 STOP 决策。
+
+### 证据来源与剩余限制
+
+本地节点日志：
+
+```text
+end_of_route: pnc_planner_node_19061_1791023833119.log
+straight_cruise: pnc_planner_node_24295_1791025011690.log
+curve_cruise: pnc_planner_node_24293_1791025011691.log
+static_obstacle_avoid: pnc_planner_node_24294_1791025011691.log
+static_obstacle_blocked: pnc_planner_node_22415_1791024627997.log
+```
+
+这些日志位于本地 ROS2 日志目录，不作为仓库必需文件。`expected` 字段仍是人工检查目标，
+没有自动 runner 或 metrics。停止后仍周期性规划和输出日志；低速死区、保持轨迹边界、
+微小控制命令和 debug 标签统一留待后续整理。动态障碍物和 EM Planner 尚未实现。
+
 场景执行链路：
 
 ```text
@@ -12,11 +111,12 @@ ScenarioLoader
       ↓
 scenario_publisher
       ├── /routing_path
-      └── /scenario/initial_state
+      ├── /scenario/initial_state
+      └── /scenario/obstacles
                     ↓
              PncPlannerNode
                     ↓
-       ReferenceLine / LatticePlanner / EgoVehicle
+       ReferenceLine / BehaviorPlanner / LatticePlanner / EgoVehicle
 ```
 
 YAML 中的 `collision_free`、`max_abs_l`、`max_acc` 等 `expected` 字段暂时只作为人工
@@ -74,7 +174,7 @@ colcon test \
 colcon test-result --verbose
 ```
 
-最近一次保留的测试记录来自 2026-07-27，共 5 个 gtest target、19 个测试，全部通过：
+历史测试记录来自 2026-07-27，共 5 个 gtest target、19 个测试，全部通过；最新结果见本文开头：
 
 ```text
 QuinticPolynomial：2/2
@@ -125,7 +225,7 @@ ros2 run tf2_ros tf2_echo map base_link
 |---|---|---|
 | `straight_cruise` | 沿 x 轴生成参考线并稳定跟随 | Pass |
 | `curve_cruise` | 根据 YAML 路线生成缓弯参考线和规划轨迹 | Pass |
-| `end_of_route` | 从 x=16 m、v=3 m/s 启动，在 x=20 m 附近停车 | Partial |
+| `end_of_route` | 从 x=14 m、v=3 m/s 启动，在 s=18 m 附近正常停车 | Pass |
 | `static_obstacle_blocked` | 障碍物阻塞所有当前 Lattice 候选并触发受控减速 | Pass |
 | `static_obstacle_avoid` | 提前横移绕过静态障碍物并返回中心线 | Pass |
 
@@ -139,7 +239,10 @@ ros2 run tf2_ros tf2_echo map base_link
 节点可以使用 YAML 路线更新 `ReferenceLine`，RViz 中的参考线和规划轨迹都呈缓弯形态。
 该场景用于组合检查参考线插值、Frenet 转换和轨迹跟踪。
 
-## `end_of_route` 问题记录
+## `end_of_route` 历史问题记录
+
+以下记录对应旧版 x=16 m 场景和正常停车实现前的行为，不代表当前状态；
+当前正常停车已通过，最新输入和结果见本文开头。
 
 场景输入：
 
@@ -222,7 +325,7 @@ y 和 yaw 基本保持为 0，没有明显横向跳变，程序也没有崩溃�
 这个修改解决了陈旧轨迹继续被执行的问题，但不等于实现了正常的终点停车。修复后的完整
 TF 重跑数据还没有补录，所以 `end_of_route` 仍保持 `Partial`。
 
-### 当前结论
+### 当时结论
 
 | 检查项 | 结果 | 依据 |
 |---|---|---|
@@ -239,7 +342,10 @@ TF 重跑数据还没有补录，所以 `end_of_route` 仍保持 `Partial`。
 总体状态：`Partial`。场景输入链路已经打通，陈旧轨迹问题已经修复，但正常终点停车尚未
 实现，修复后的完整运行数据也还没有补录。
 
-## `static_obstacle_blocked` 验证记录
+## `static_obstacle_blocked` 历史验证记录
+
+以下为障碍物中心 x=5 m 时的旧记录。该输入初始已进入当前碰撞模型的判定范围，
+因此只能作为轨迹失效和减速链路的历史证据；当前 x=12 m 的复测结论见本文开头。
 
 场景输入：
 
@@ -292,21 +398,22 @@ d = v² / (2|a|) = 5² / (2×3) ≈ 4.17 m
 | fallback 受控减速 | Pass | `tf2_echo` 位置稳定在 x≈4.173 m |
 | 正常障碍物停车规划 | 未实现 | 当前行为是规划失败后的 fallback deceleration |
 
-该场景证明了静态障碍物完全阻塞时的安全降级链路，但不证明已经实现
+该场景证明了静态障碍物完全阻塞时的失败减速链路，不证明无碰撞停车，也不证明已经实现
 `STOP_FOR_OBSTACLE` 或其他正常停车行为。
 
 ## 当前限制
 
 - `expected` 指标还不能自动采集和判定。
 - 尚未实现 batch scenario runner。
-- `state` 字段还没有驱动独立的行为状态机。
+- VehicleState 描述仿真自车状态；独立的 BehaviorPlanner 当前只支持路线终点 CRUISE/STOP。
 - 动态 TF 只在车辆状态更新时广播，晚启动的订阅者可能错过初始 TF。
-- planner 还不能生成正常的终点停车纵向轨迹。
-- 修复后的 `end_of_route` TF 数据还没有补录。
+- 正常停车已通过上述闭环日志验证，尚未接入自动停车误差和跟踪误差评估。
 - 一个 planner 进程只运行一个场景，切换场景需要重启节点。
 - 当前只处理静态障碍物，碰撞检查仍采用简化距离模型。
 
-## `static_obstacle_avoid` 验证记录
+## `static_obstacle_avoid` 历史验证记录
+
+以下为 2026-09-20 的绕行和末端 fallback 记录；本轮已复测正常末端停车，见本文开头。
 
 场景输入：
 

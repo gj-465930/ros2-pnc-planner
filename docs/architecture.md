@@ -22,7 +22,10 @@ ReferenceLine
 Frenet Conversion
         |
         v
-LatticePlanner
+BehaviorPlanner → PlanningTarget (CRUISE / STOP)
+        |
+        v
+LatticePlanner <--- Static Obstacles
         |
         v
 Trajectory
@@ -59,17 +62,28 @@ Frenet 坐标系把车辆和轨迹点表示为沿参考线方向的纵向坐标 
 
 当前系统中，Lattice Planner 会先将 ego 状态投影到参考线附近，再在 Frenet 空间中生成横向和纵向候选轨迹，最后再转换回 Cartesian 坐标用于控制和可视化。
 
+### BehaviorPlanner / PlanningTarget
+
+`BehaviorPlanner` 根据当前自车状态、参考线剩余距离、制动距离和规划前视给出路线终点
+CRUISE/STOP 意图。`PlanningTarget` 是显式接口：CRUISE 携带目标速度，STOP 携带
+停车位置 `stop_s`，要求终端速度为零。STOP 触发后在当前单场景生命周期内锁存。
+
+VehicleState 描述仿真自车状态，PlanningTarget 描述规划意图。正常 STOP 通过有效轨迹
+和控制器执行；规划失败由节点清空轨迹并执行 fallback 减速，两条路径独立。
+
 ### LatticePlanner
 
 `LatticePlanner` 是当前局部规划 baseline。它的主要职责包括：
 
 - 根据当前车辆状态生成横向候选轨迹。
-- 根据车辆状态生成纵向候选轨迹。
+- 根据车辆状态和 PlanningTarget 生成巡航或正常停车纵向候选。
 - 对候选轨迹进行约束检查。
 - 按代价函数选择最优横纵向轨迹组合。
 - 将 Frenet 轨迹转换成 Cartesian 轨迹输出。
 
-当前实现主要用于建立 baseline 能力。后续需要增加更清晰的 cost breakdown、候选轨迹调试输出、障碍物约束和场景验证。
+当前已有静态障碍物过滤、终端安全检查、候选可视化、拒绝诊断和正常停车连续重规划测试。
+STOP 时长从估算值开始搜索，至少保留 1 s 的采样跨度；估算值不构成 jerk 可行性保证，
+每个候选仍需经过约束检查。后续补充更清晰的 cost breakdown 和自动场景指标。
 
 ### Trajectory
 
@@ -81,7 +95,8 @@ Frenet 坐标系把车辆和轨迹点表示为沿参考线方向的纵向坐标 
 
 当前控制层包括 Pure Pursuit 横向控制和 PID 纵向控制。
 
-Pure Pursuit 根据规划轨迹和车辆状态计算横摆角速度命令，用于横向跟踪。PID 纵向控制根据目标轨迹速度和当前车辆速度计算加速度命令。
+Pure Pursuit 根据规划轨迹和车辆状态计算横摆角速度命令，用于横向跟踪。
+PID 纵向控制结合速度误差反馈与轨迹加速度前馈计算加速度命令。
 
 后续可以加入 Stanley、LQR 等控制器，并建立 tracking metrics，用同一批场景比较不同控制器的跟踪误差和稳定性。
 
@@ -89,26 +104,27 @@ Pure Pursuit 根据规划轨迹和车辆状态计算横摆角速度命令，用�
 
 `EgoVehicle` 是一个简化自车仿真模块，用于根据控制命令更新车辆状态。它让当前项目可以在没有完整仿真器的情况下形成规划-控制-车辆状态更新闭环。
 
-这个模块不是高保真车辆动力学模型，但足够支持早期局部规划和控制效果验证。
+周期内按线性变化的加速度积分；速度过零时只积分到停止时刻，并用低速死区避免静止时
+持续累计位移。该模块不是高保真车辆动力学模型。
 
 ### RViz Visualization
 
-`Visualizer` 负责把参考线、规划轨迹和车辆模型发布到 RViz。可视化对于 PNC 项目很重要，因为很多规划问题只看日志很难判断，例如参考线是否平滑、轨迹是否偏离、车辆是否能稳定跟踪。
+`Visualizer` 负责把参考线、规划轨迹、有效候选、静态障碍物、停车目标和车辆模型发布到 RViz。可视化对于 PNC 项目很重要，因为很多规划问题只看日志很难判断，例如参考线是否平滑、轨迹是否偏离、车辆是否能稳定跟踪。
 
-后续障碍物、候选轨迹、最终轨迹、cost 信息和场景状态也应逐步可视化。
+更详细的 cost 分解和自动场景指标尚待扩展。
 
 ## 4. 当前运行时数据流
 
 当前 `PncPlannerNode` 是主流程入口。一次周期性回调中的逻辑可以概括为：
 
 ```text
-1. 发布参考线到 RViz
-2. 检查参考线是否有效
+1. 等待 route、ego 初始状态和障碍物列表就绪，检查参考线
+2. 发布参考线和静态障碍物到 RViz
 3. 获取当前 ego vehicle 状态
-4. 调用 LatticePlanner 生成局部轨迹
-5. 发布规划轨迹到 RViz
-6. 控制器根据规划轨迹计算控制命令
-7. EgoVehicle 根据控制命令更新车辆状态
+4. 调用 BehaviorPlanner，获取 PlanningTarget 并显示停车目标
+5. 调用 LatticePlanner，成功时发布候选和规划轨迹，再由控制器计算命令
+6. 行为或轨迹规划失败时清空旧轨迹，使用独立 fallback 减速命令
+7. EgoVehicle 更新车辆状态，记录行为、规划结果和执行状态
 ```
 
 这说明当前架构已经具备 PNC 闭环雏形，但系统中的许多能力仍处于 baseline 阶段。
@@ -117,12 +133,12 @@ Pure Pursuit 根据规划轨迹和车辆状态计算横摆角速度命令，用�
 
 当前项目的主要局限包括：
 
-- 核心算法仍直接链接到 node executable，不利于单元测试复用。
-- 项目还缺少针对数学、参考线、Frenet 转换和规划模块的系统化单元测试。
-- 场景 YAML 文件仍处于早期阶段，尚未形成完整 scenario loader 和 validation runner。
-- 障碍物数据结构和 planner 接口已有雏形，但主流程中的障碍物输入、碰撞检查和可视化还没有形成完整链路。
-- Behavior Planner 尚未独立，规划目标和行为状态还没有清晰分层。
-- 当前 Lattice Planner 还缺少候选轨迹可视化、过滤原因统计和详细 cost breakdown。
+- 已有可复用库和核心测试，但算法、仿真、可视化与 ROS2 依赖还需要单独整理边界和目录。
+- 场景已有 YAML loader 和 publisher，尚无自动 validation runner 和 metrics。
+- 碰撞检查使用简化中心距离模型，未实现完整矩形几何、连续碰撞检测或动态预测。
+- BehaviorPlanner 只支持路线终点 CRUISE/STOP，尚未扩展跟车、让行和正常障碍物停车。
+- 当前 Lattice Planner 仍需更详细的 cost breakdown 和更广的状态覆盖。
+- 停车完成状态、低速阈值边界、静止命令和日志生命周期仍可完善。
 - EM Planner 仍是未来方向，当前不能描述为已完成模块。
 
 这些限制并不意味着当前项目没有价值。相反，它们定义了后续工程化和作品集打磨的路线。
@@ -169,4 +185,3 @@ Metrics + RViz Visualization
 - 能否解释：模块职责、算法选择和工程取舍是否能在面试中讲清楚。
 
 因此，项目不应盲目堆叠高级算法名。更合理的路线是先把 Lattice baseline 做到可靠、可测、可复现、可解释，再扩展障碍物链路、行为规划和 EM Planner。
-

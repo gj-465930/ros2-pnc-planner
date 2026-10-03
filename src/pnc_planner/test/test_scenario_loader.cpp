@@ -67,7 +67,7 @@ TEST(ScenarioLoaderTest, ParsesEndOfRouteEgoInitialState)
   EXPECT_EQ(scenario.route.frame_id, "map");
   EXPECT_EQ(scenario.route.points.size(), 3U);
 
-  EXPECT_DOUBLE_EQ(scenario.ego.x, 16.0);
+  EXPECT_DOUBLE_EQ(scenario.ego.x, 14.0);
   EXPECT_DOUBLE_EQ(scenario.ego.y, 0.0);
   EXPECT_DOUBLE_EQ(scenario.ego.yaw, 0.0);
   EXPECT_DOUBLE_EQ(scenario.ego.v, 3.0);

@@ -257,10 +257,12 @@ std::vector<math::QuinticPolynomial> LatticePlanner::generate_stop_trajectories(
   const double base_duration = std::max(deceleration_duration, distance_duration);
 
   constexpr double duration_step = 0.025;
+  constexpr double minimum_duration_search_span = 1.0;
 
+  const double minimum_duration_horizon = base_duration + minimum_duration_search_span;
   const double duration_horizon = std::isfinite(config_.planning_time)
-                                    ? std::max(base_duration, config_.planning_time)
-                                    : base_duration;
+                                    ? std::max(minimum_duration_horizon, config_.planning_time)
+                                    : minimum_duration_horizon;
 
   const std::size_t sample_count =
     static_cast<std::size_t>(std::ceil((duration_horizon - base_duration) / duration_step)) + 1;
