@@ -1,4 +1,4 @@
-#include "pnc_planner/visualizer.hpp"
+#include "pnc_planner/visualization/visualizer.hpp"
 
 #include "tf2/LinearMath/Quaternion.hpp"
 

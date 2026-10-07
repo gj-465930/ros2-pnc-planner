@@ -8,12 +8,12 @@
 
 当前系统可以基于 mock route 或订阅到的全局路径生成参考线，由 BehaviorPlanner 给出巡航或路线终点停车目标，再通过 Lattice Planner 采样并选择局部轨迹。Pure Pursuit 和 PID 控制器跟踪轨迹，并在简化自车模型中更新车辆状态。
 
-当前版本以 Lattice Planner 作为 baseline。后续会在测试、场景验证、障碍物链路和行为规划层逐步完善之后，再扩展一个最小版本的 EM Planner。
+当前版本以 Lattice Planner 作为 baseline，已具备核心测试、YAML 场景、静态障碍物绕行和最小 CRUISE/STOP 行为层。后续先补自动场景指标和更完整的 Lattice 验证，再扩展最小版本的 EM Planner。
 
 ## 当前功能
 
 - 基于 `ament_cmake` 的 ROS2 C++17 package。
-- 核心规划、控制、仿真与可视化代码已抽成 `pnc_planner_core`，便于单元测试复用。
+- 纯 C++ 规划与控制代码位于 `pnc_planner_core`；ROS2 节点、自车仿真与可视化位于 `pnc_planner_runtime`，核心算法可独立链接测试。
 - 基于路径点和样条插值的参考线生成。
 - Cartesian-Frenet 坐标转换工具，用于路径相对坐标系下的规划。
 - 五次多项式轨迹生成基础模块。
@@ -73,7 +73,11 @@ src/pnc_planner/
   src/                      C++ 实现文件
     controller/             Pure Pursuit 和 PID 控制器
     math/                   样条、Frenet 转换、多项式等数学工具
-    planning/behavior/      最小路线终点行为规划
+    planning/               参考线、Lattice 与最小行为规划
+    runtime/                ROS2 主节点
+    simulation/             带 TF 广播的自车仿真
+    visualization/          RViz 发布接口
+    scenario/               场景加载与发布
   config/                   规划器运行参数
   launch/                   ROS2 launch 文件
   rviz/                     RViz 配置
@@ -228,7 +232,7 @@ docs/scenario_validation.md
 ## 后续计划
 
 - 后续扩展场景 runner 和 metrics，使 `expected` 字段能够自动判定。
-- 先单独整理核心算法与 ROS2 运行时适配层的架构，保留现有场景和测试回归。
+- 在已分离的核心算法和 ROS2 运行时边界上补充自动场景指标，并保持现有场景回归。
 - 完善停车完成状态、日志和低速边界处理，再独立扩展正常障碍物停车行为。
 - 继续完善 Lattice baseline 的代价分解和自动运行指标。
 - 增加动态障碍物预测及相应的时空碰撞检查。

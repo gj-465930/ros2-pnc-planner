@@ -3,11 +3,32 @@
 这里记录第一版 YAML 场景链路的运行和排查结果。目前主要通过 ROS2 topic、节点日志、TF
 和 RViz 检查运行状态，还没有接入自动 metrics 和批量测试。
 
-## 最新验证结果（2026-10-03）
+## 架构重构回归（2026-10-07）
+
+将代码拆为 `pnc_planner_core`、`pnc_planner_runtime` 和节点入口，并整理规划、运行时、
+仿真与可视化目录后，用户确认包构建及六个核心 gtest target 均通过。`ros2 run` 搭配
+参数文件验证了节点入口和 `end_of_route` 正常 STOP；`ros2 launch` 搭配场景发布器验证了
+RViz/TF 组合入口和 `static_obstacle_avoid` 绕行。重启节点分别运行
+`static_obstacle_blocked`、`straight_cruise`、`curve_cruise`，人工检查结果均符合预期。
+
+| 场景 | 本轮人工检查 |
+|---|---|
+| `end_of_route` | 正常 STOP，无 planning-failure fallback |
+| `static_obstacle_avoid` | 绕过障碍物并回到中心线，终点正常停车 |
+| `static_obstacle_blocked` | 无有效候选，进入 -3 m/s² fallback 并减速停车 |
+| `straight_cruise` | 沿中心线巡航，终点正常停车 |
+| `curve_cruise` | 沿曲线参考线巡航，终点正常停车 |
+
+本轮是重构后的人工场景回归；下文 2026-10-03 的精确停车位置和日志文件名属于当时的
+基线记录，不能当作本轮重新采集的数值。`expected` 字段仍未由自动 runner 或 metrics
+判定；旧轨迹清空由代码和单元测试覆盖，首轮即失败的阻塞场景不能单独证明这一点。
+阻塞场景的无碰撞结论仍受简化距离模型限制。
+
+## 阶段 5 数值基线（2026-10-03）
 
 正常路线终点停车已实现并完成闭环验证。BehaviorPlanner 给出 CRUISE/STOP 目标，
 LatticePlanner 生成对应轨迹，控制器执行正常停车；规划失败后的 fallback 仍是独立路径。
-本节为当前结论，后文历史记录保留此前的失败现象和排查依据。
+本节保留当时的数值结果，后文历史记录保留此前的失败现象和排查依据。
 
 本轮主要参数：规划时域 5 s，巡航目标速度 5 m/s，横向采样 `[3.5, 0.0, -3.5]`，
 横向过渡距离 12 m，终点缓冲 2 m，fallback 减速度 -3 m/s²。

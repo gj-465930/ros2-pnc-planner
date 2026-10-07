@@ -1,4 +1,4 @@
-#include "pnc_planner/lattice_planner.hpp"
+#include "pnc_planner/planning/lattice_planner.hpp"
 
 #include <algorithm>
 #include <cmath>

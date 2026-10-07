@@ -2,15 +2,16 @@
 
 #include "pnc_planner/controller/longitudinal_controller_base.hpp"
 #include "pnc_planner/controller/pure_pursuit_controller.hpp"
-#include "pnc_planner/ego_vehicle.hpp"
-#include "pnc_planner/lattice_planner.hpp"
 #include "pnc_planner/msg/obstacle_array.hpp"
 #include "pnc_planner/msg/scenario_initial_state.hpp"
 #include "pnc_planner/planning/behavior/behavior_planner.hpp"
-#include "pnc_planner/reference_line.hpp"
-#include "pnc_planner/visualizer.hpp"
+#include "pnc_planner/planning/lattice_planner.hpp"
+#include "pnc_planner/planning/reference_line.hpp"
+#include "pnc_planner/simulation/ego_vehicle.hpp"
+#include "pnc_planner/visualization/visualizer.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include "geometry_msgs/msg/point.hpp"
 #include "nav_msgs/msg/path.hpp"
 
 #include <memory>

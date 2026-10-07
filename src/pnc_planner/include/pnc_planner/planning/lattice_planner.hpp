@@ -12,7 +12,7 @@
 #pragma once
 
 #include "pnc_planner/math/quintic_polynomial.hpp"
-#include "pnc_planner/planner_base.hpp"
+#include "pnc_planner/planning/planner_base.hpp"
 
 #include <cstddef>
 #include <cstdint>

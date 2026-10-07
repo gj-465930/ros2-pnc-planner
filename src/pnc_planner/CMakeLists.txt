@@ -30,39 +30,52 @@ rosidl_get_typesupport_target(
     "rosidl_typesupport_cpp"
 )
 
+# 纯 C++ 算法库
 add_library(pnc_planner_core STATIC
-    src/visualizer.cpp
-    src/ego_vehicle.cpp
-    src/reference_line.cpp
+    src/planning/reference_line.cpp
     src/math/spline1d.cpp
     src/math/cartesian_frenet.cpp
     src/math/quintic_polynomial.cpp
-    src/pnc_planner_node.cpp
-    src/lattice_planner.cpp
+    src/planning/lattice_planner.cpp
     src/controller/pure_pursuit_controller.cpp
     src/controller/pid_controller.cpp
     src/planning/behavior/behavior_planner.cpp
 )
 
-ament_target_dependencies(
-    pnc_planner_core
-    "rclcpp"
-    "visualization_msgs"
-    "geometry_msgs"
-    "tf2"
-    "tf2_ros"
-    "nav_msgs"
-)
-
-target_link_libraries(pnc_planner_core
-    "${pnc_planner_typesupport_cpp}"
-)
-
 target_include_directories(pnc_planner_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>)
+    $<INSTALL_INTERFACE:include>
+)
 
-target_compile_features(pnc_planner_core PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(pnc_planner_core PUBLIC cxx_std_17)
+
+# ROS2 运行时库
+add_library(pnc_planner_runtime STATIC
+    src/runtime/pnc_planner_node.cpp
+    src/visualization/visualizer.cpp
+    src/simulation/ego_vehicle.cpp
+)
+
+target_include_directories(pnc_planner_runtime PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+target_compile_features(pnc_planner_runtime PUBLIC cxx_std_17)
+
+ament_target_dependencies(pnc_planner_runtime
+    rclcpp
+    visualization_msgs
+    geometry_msgs
+    tf2
+    tf2_ros
+    nav_msgs
+)
+
+target_link_libraries(pnc_planner_runtime
+    pnc_planner_core
+    "${pnc_planner_typesupport_cpp}"
+)
 
 add_library(pnc_scenario_loader STATIC
   src/scenario/scenario_loader.cpp
@@ -100,7 +113,7 @@ target_compile_features(pnc_planner_node
 )
 
 target_link_libraries(pnc_planner_node
-    pnc_planner_core
+    pnc_planner_runtime
 )
 
 add_executable(scenario_publisher

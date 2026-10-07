@@ -1,4 +1,4 @@
-#include "pnc_planner/pnc_planner_node.hpp"
+#include "pnc_planner/runtime/pnc_planner_node.hpp"
 
 #include <cmath>
 #include <vector>

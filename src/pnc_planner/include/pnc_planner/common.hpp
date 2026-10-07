@@ -1,7 +1,5 @@
 #pragma once
 
-#include "geometry_msgs/msg/point.hpp"
-
 #include <cstdint>
 #include <vector>
 
@@ -51,8 +49,6 @@ struct TrajectoryPoint
 };
 
 using Trajectory = std::vector<TrajectoryPoint>;
-
-
 
 struct Obstacle
 {

@@ -143,9 +143,9 @@ PID 纵向控制结合速度误差反馈与轨迹加速度前馈计算加速度�
 
 这些限制并不意味着当前项目没有价值。相反，它们定义了后续工程化和作品集打磨的路线。
 
-## 6. 目标架构
+## 6. 后续演进
 
-后续希望逐步演进到如下结构：
+当前已具备 YAML 场景输入、CRUISE/STOP 行为目标和 Lattice 规划闭环。后续希望逐步扩展到如下结构：
 
 ```text
 Scenario / Routing / Obstacles
@@ -169,11 +169,11 @@ Controller Benchmark
 Metrics + RViz Visualization
 ```
 
-目标架构相比当前架构，多了三个关键能力：
+后续重点是：
 
-- 场景验证：用 YAML 或其他配置方式复现不同路线、起点、终点和障碍物场景。
-- 行为规划：在局部轨迹生成之前先给出巡航、跟车、停车、避障等高层目标。
-- 指标评估：不仅能在 RViz 中看起来能跑，还能用 tracking error、collision-free、max acceleration、planning success rate 等指标验证。
+- 自动场景评估：在已有 YAML 场景基础上采集并判定跟踪误差、碰撞、加速度和规划成功率等指标。
+- 更丰富的行为目标：在当前路线终点 CRUISE/STOP 之外，逐步评估正常障碍物停车等决策。
+- EM Planner v1：在已验证的 Lattice baseline 之外增加第二种局部规划方法。
 
 ## 7. 演进原则
 
@@ -185,3 +185,35 @@ Metrics + RViz Visualization
 - 能否解释：模块职责、算法选择和工程取舍是否能在面试中讲清楚。
 
 因此，项目不应盲目堆叠高级算法名。更合理的路线是先把 Lattice baseline 做到可靠、可测、可复现、可解释，再扩展障碍物链路、行为规划和 EM Planner。
+
+## 8. 核心算法与 ROS2 运行时边界
+
+核心层包含数学计算、参考线、BehaviorPlanner、LatticePlanner、已实现的纯 C++ 控制器
+和 VehicleInfo、Trajectory、PlanningTarget 等数据类型。核心层通过普通 C++ 数据接口
+工作，不负责订阅消息、发布消息或管理 ROS2 定时器。
+
+运行时层包含 PncPlannerNode、Visualizer 和当前带 TF 广播的 EgoVehicle。它负责接收
+场景输入，将 ROS 消息转换为核心数据，调用核心算法，执行仿真更新并发布结果。
+当前 EgoVehicle 同时承担运动积分和 TF 广播两个职责，先整体归入运行时层；后续若需
+独立测试运动模型，再将数值更新与 TF 发布分离。
+
+ScenarioLoader 保持独立场景加载库，依赖 yaml-cpp，不依赖 ROS2 节点。
+ScenarioPublisher 负责把加载出的场景数据转换为 ROS 消息并发布。
+
+当前构建依赖如下，箭头表示“依赖”：
+
+```text
+pnc_planner_node → pnc_planner_runtime → pnc_planner_core
+
+scenario_publisher → pnc_scenario_loader
+scenario_publisher → ROS2 消息与发布接口
+```
+
+核心库不反向依赖运行时库。LatticePlanner 只需要自车状态、参考线、障碍物和规划目标，
+无需知道这些数据来自 ROS topic、YAML 还是单元测试。节点对象和发布接口留在运行时层。
+
+`common.hpp` 已移除无必要的 ROS 消息 include；节点、Visualizer 和 EgoVehicle 已从
+`pnc_planner_core` 移入 `pnc_planner_runtime`。参考线与 Lattice 源文件位于 `planning/`，
+节点位于 `runtime/`，自车仿真位于 `simulation/`，可视化位于 `visualization/`。
+`main.cpp` 只负责创建并运行节点。文件移动没有改变类名、命名空间、算法参数、topic、
+launch 或单场景输入契约；构建、六个核心测试目标和五个 YAML 场景已完成回归。

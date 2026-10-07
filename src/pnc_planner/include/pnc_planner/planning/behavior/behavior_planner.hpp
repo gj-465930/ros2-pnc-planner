@@ -2,7 +2,7 @@
 
 #include "pnc_planner/common.hpp"
 #include "pnc_planner/planning/planning_target.hpp"
-#include "pnc_planner/reference_line.hpp"
+#include "pnc_planner/planning/reference_line.hpp"
 
 #include <optional>
 

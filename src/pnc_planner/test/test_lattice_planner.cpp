@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
-#include "pnc_planner/lattice_planner.hpp"
+#include "pnc_planner/planning/lattice_planner.hpp"
 #include "pnc_planner/planning/behavior/behavior_planner.hpp"
-#include "pnc_planner/reference_line.hpp"
+#include "pnc_planner/planning/reference_line.hpp"
 
 #include <cmath>
 #include <cstdint>
