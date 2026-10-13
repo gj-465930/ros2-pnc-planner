@@ -2,6 +2,8 @@
 
 #include "pnc_planner/math/cartesian_frenet.hpp"
 
+#include <cmath>
+
 namespace pnc_planner
 {
 
