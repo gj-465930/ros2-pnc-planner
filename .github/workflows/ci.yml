@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build and gtest (ROS2 Humble)
+    runs-on: ubuntu-22.04
+    container: ros:humble-ros-base
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          rosdep update --rosdistro humble
+          rosdep install --from-paths src --ignore-src -y --rosdistro humble
+
+      - name: Build
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --packages-select pnc_planner \
+            --event-handlers console_cohesion+
+
+      # 只运行功能 gtest（test_*），ament lint 尚未全量通过，暂不纳入 CI
+      - name: Test
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon test --packages-select pnc_planner \
+            --event-handlers console_direct+ \
+            --ctest-args -R '^test_' --output-on-failure
+          colcon test-result --verbose
