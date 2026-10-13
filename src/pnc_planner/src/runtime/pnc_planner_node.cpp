@@ -13,6 +13,10 @@
 #include <stdexcept>
 #include <unordered_set>
 #include <vector>
+#include <cstddef>
+#include <memory>
+#include <optional>
+#include <string>
 
 namespace pnc_planner
 {

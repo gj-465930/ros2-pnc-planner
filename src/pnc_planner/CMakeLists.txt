@@ -14,6 +14,10 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
+# yaml-cpp 0.8+ 导出 yaml-cpp::yaml-cpp；Ubuntu 22.04 自带的 0.7 只导出 yaml-cpp
+if(NOT TARGET yaml-cpp::yaml-cpp AND TARGET yaml-cpp)
+  add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
+endif()
 find_package(std_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
@@ -147,7 +151,6 @@ ament_export_dependencies(
 
 install(DIRECTORY
     launch
-    meshes
     rviz
     urdf
     config

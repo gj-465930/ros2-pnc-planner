@@ -4,6 +4,10 @@
 #include <cmath>
 #include <iostream>
 #include <utility>
+#include <cstddef>
+#include <limits>
+#include <optional>
+#include <vector>
 
 namespace pnc_planner
 {
