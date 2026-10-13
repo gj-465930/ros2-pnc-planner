@@ -17,6 +17,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <cstddef>
+#include <vector>
 
 namespace pnc_planner
 {

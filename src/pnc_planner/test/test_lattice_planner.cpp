@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include <cstddef>
+#include <optional>
 
 constexpr double kEps = 1e-6;
 

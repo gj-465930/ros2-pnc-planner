@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <cstddef>
 
 namespace pnc_planner::controller
 {

@@ -3,6 +3,8 @@
 #include "tf2/LinearMath/Quaternion.hpp"
 
 #include <utility>
+#include <cstddef>
+#include <vector>
 
 namespace pnc_planner
 {

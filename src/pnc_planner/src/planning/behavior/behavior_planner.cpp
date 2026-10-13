@@ -1,6 +1,7 @@
 #include "pnc_planner/planning/behavior/behavior_planner.hpp"
 
 #include <cmath>
+#include <optional>
 
 namespace pnc_planner::planning::behavior
 {

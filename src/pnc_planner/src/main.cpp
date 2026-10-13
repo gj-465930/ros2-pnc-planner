@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <vector>
+#include <memory>
 
 int main(const int argc, char ** argv)
 {

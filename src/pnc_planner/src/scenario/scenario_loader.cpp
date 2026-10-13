@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
+#include <cstddef>
 
 namespace pnc_planner::scenario
 {
