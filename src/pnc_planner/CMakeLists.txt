@@ -151,7 +151,6 @@ ament_export_dependencies(
 
 install(DIRECTORY
     launch
-    meshes
     rviz
     urdf
     config
