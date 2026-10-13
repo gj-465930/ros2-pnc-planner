@@ -1,6 +1,7 @@
 #include "pnc_planner/math/spline1d.hpp"
 
 #include <algorithm>
+#include <vector>
 
 namespace pnc_planner ::math
 {

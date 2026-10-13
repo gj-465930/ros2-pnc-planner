@@ -5,6 +5,8 @@
 #include "geometry_msgs/msg/transform_stamped.hpp"
 
 #include <cmath>
+#include <cstddef>
+#include <memory>
 
 namespace pnc_planner
 {

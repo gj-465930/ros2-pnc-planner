@@ -4,6 +4,8 @@
 #include "rclcpp/rclcpp.hpp"
 #include "tf2_ros/transform_broadcaster.hpp"
 
+#include <memory>
+
 namespace pnc_planner
 {
 
